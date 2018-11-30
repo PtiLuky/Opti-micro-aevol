@@ -87,6 +87,7 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     Gaussian* g2 = new Gaussian(-1.4,0.5,0.07);
     Gaussian* g3 = new Gaussian(0.3,0.8,0.03);
 
+    // TODO CUDA here
     target = new double[300];
     for (int i = 0; i < 300; i++) {
         double pt_i = ((double)i)/300.0;
@@ -101,13 +102,14 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
         target[i] = tmp;
     }
 
-  delete g1;
-  delete g2;
-  delete g3;
+    delete g1;
+    delete g2;
+    delete g3;
 
     geometric_area_ = 0;
 
-
+    // (fabs is float/double absolute function)
+    // TODO virer fabs qui est un relicat d'un vieux copier-coller
     for (int i = 0; i < 298; i++) {
         geometric_area_+=((fabs(target[i]) + fabs(target[i+1])) / (600.0));
     }
@@ -123,6 +125,7 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     // Generate a random organism that is better than nothing
     double r_compare = 0;
 
+    // TODO boucle exécutée plus de 800 fois, à paralliser : CUDA : porter sous fonctions en CUDA + gérer obj en mémoire (arrays)
     while(r_compare >= 0) {
         auto random_organism = std::make_shared<Organism>(this, init_length_dna, 0);
         internal_organisms_[0] = random_organism;
@@ -140,12 +143,12 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
         compute_fitness(0, selection_pressure);
 
         r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
-
     }
 
     printf("Populating the environment\n");
 
     // Create a population of clones based on the randomly generated organism
+    // TODO paralleliser CUDA
     for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
         prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id] =
             std::make_shared<Organism>(this, internal_organisms_[0]);
@@ -169,6 +172,7 @@ ExpManager::ExpManager(int time) {
     load(time);
 
     geometric_area_ = 0;
+    
     for (int i = 0; i < 298; i++) {
         geometric_area_+=((fabs(target[i]) + fabs(target[i+1])) / (600.0));
     }
