@@ -1,3 +1,8 @@
+# Opti Micro-Aevol : an optimization of micro-aevol
+
+School project in order to optimize the micro-aevol (or mini-aevol), see below 
+
+
 # Mini-Aevol : A mini-application based on the Aevol simulator
 
 A reduced version (from a model and implementation point of view) of Aevol.
@@ -57,6 +62,7 @@ More details about the model and its implementation are given at :
 ## Authors
 
 * **Jonathan Rouzaud-Cornabas** - *Initial work*
+* **Lucas Ouaniche** - *Optimization*
 
 For the authors of Aevol software, see [http://www.aevol.fr](http://www.aevol.fr)
 
