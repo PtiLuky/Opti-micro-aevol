@@ -2,3 +2,6 @@
 CMakeCache.txt
 Makefile
 CMakeFiles/
+*.a
+*.cmake
+pdc_mini_aevol
