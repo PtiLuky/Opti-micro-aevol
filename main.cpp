@@ -29,6 +29,7 @@
 #include <iostream>
 #include <getopt.h>
 #include <cstring>
+#include <chrono>
 
 #include "ExpManager.h"
 
@@ -175,6 +176,7 @@ int main(int argc, char* argv[]) {
     }
 
 
+    std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
     ExpManager *exp_manager;
     if (resume == -1) {
@@ -186,6 +188,10 @@ int main(int argc, char* argv[]) {
     }
 
     exp_manager->run_evolution(nbstep);
+
+    std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+    auto duration_gpu_start_stop_rna = std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+    printf("Total time : %ld", duration_gpu_start_stop_rna);
 
     delete exp_manager;
 

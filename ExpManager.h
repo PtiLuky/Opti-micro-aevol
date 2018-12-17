@@ -27,6 +27,8 @@
 
 #ifndef PDC_MINI_AEVOL_EXPMANAGER_H
 #define PDC_MINI_AEVOL_EXPMANAGER_H
+#define NOLOG
+
 
 
 #include "Threefry.h"

@@ -40,13 +40,12 @@
  */
 DnaMutator::DnaMutator(Threefry::Gen* mut_prng,
       int length,
-      double mutation_rate, int indiv_id) {
-  mut_prng_ = mut_prng;
-  length_ = length;
-  mutation_rate_ = mutation_rate;
-
-  id_ = indiv_id;
-}
+      double mutation_rate, int indiv_id)
+      : mut_prng_(mut_prng)
+      , length_(length)
+      , mutation_rate_(mutation_rate)
+      , id_(indiv_id) 
+      {}
 
 /**
  * Generate both type of the mutations (see below)

@@ -30,7 +30,7 @@
 #include <algorithm>
 #include <sys/stat.h>
 #include <err.h>
-#include<chrono>
+#include <chrono>
 #include <iostream>
 
 using namespace std::chrono;
@@ -62,25 +62,21 @@ using namespace std;
 ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutation_rate, int init_length_dna,
                        double w_max, int selection_pressure, int backup_step)
     : rng_(new Threefry(grid_width, grid_height, seed))
+    , grid_height_(grid_height)
+    , grid_width_(grid_width)
+    , backup_step_(backup_step)
+    , nb_indivs_(grid_height * grid_width)
+
+    , w_max_(w_max)
+    , selection_pressure_(selection_pressure)
+
+    , mutation_rate_(mutation_rate)
 {
-    // Initializing the data structure
-    grid_height_ = grid_height;
-    grid_width_ = grid_width;
-
-    backup_step_ = backup_step;
-
-    nb_indivs_ = grid_height*grid_width;
-
-    w_max_ = w_max;
-    selection_pressure_ = selection_pressure;
-
     internal_organisms_ = new std::shared_ptr<Organism>[nb_indivs_];
     prev_internal_organisms_ = new std::shared_ptr<Organism>[nb_indivs_];
 
     next_generation_reproducer_ = new int[nb_indivs_];
     dna_mutator_array_ = new DnaMutator*[nb_indivs_];
-
-    mutation_rate_ = mutation_rate;
 
     // Building the target environment
     Gaussian* g1 = new Gaussian(1.2,0.52,0.12);
@@ -474,10 +470,11 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
         //transfer_out(this);
 
-
+        #ifndef NOLOG
         std::cout<<"LOG,"<<duration_selection<<","<<duration_mutation<<","<<duration_start_stop_RNA
                  <<","<<duration_start_protein<<","<<duration_compute_protein<<","<<duration_translate_protein
                  <<","<<duration_compute_phenotype<<","<<duration_compute_phenotype<<","<<duration_compute_fitness<<std::endl;
+        #endif
     }
     for (int indiv_id = 1; indiv_id < nb_indivs_; indiv_id++) {
         prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id];
@@ -1409,7 +1406,9 @@ void ExpManager::run_evolution(int nb_gen) {
       auto duration_gpu_start_stop_rna = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         firstGen = false;
+        #ifndef NOLOG
         printf("Generation %d : Best individual fitness %e\n",AeTime::time(),best_indiv->fitness);
+        #endif
 
         if (AeTime::time() % backup_step_ == 0) {
             printf("Save !!\n");
