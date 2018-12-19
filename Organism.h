@@ -56,7 +56,7 @@ public:
     Organism(ExpManager* exp_m, int length, int indiv_id);
 
   /// Create an organism with a given genome
-  Organism(ExpManager* exp_m, char* genome, int indiv_id);
+  Organism(ExpManager* exp_m, Sequence* genome, int indiv_id);
 
     Organism(ExpManager* exp_m, std::shared_ptr<Organism> clone);
 

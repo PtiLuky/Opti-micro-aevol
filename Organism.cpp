@@ -56,17 +56,17 @@ Organism::Organism(ExpManager* exp_m, int length, int indiv_id) {
  * Create an organism with a given genome
  *
  * @param exp_m : Related ExpManager object
- * @param genome : Genome to assign to the organism
+ * @param genome : Sequence struct with Genome to assign to the organism
  * @param indiv_id : Unique Identification Number
  */
-Organism::Organism(ExpManager *exp_m, char* genome, int indiv_id) {
+Organism::Organism(ExpManager *exp_m, Sequence* genome, int indiv_id) {
     exp_m_ = exp_m;
 
     count_prom = 0;
     rna_count_ = 0;
 
-    dna_ = new Dna(genome,strlen(genome));
-    parent_length_ = strlen(genome);
+    dna_ = new Dna(genome->seq, genome->length);
+    parent_length_ = genome->length;
     indiv_id_ = indiv_id;
 
 }
