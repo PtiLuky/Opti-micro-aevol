@@ -5,13 +5,46 @@
 #include "Dna.h"
 #include "ExpManager.h"
 
-Dna::Dna(const Dna& clone) : seq_(clone.seq_) {
+Dna::Dna(const Dna& clone) : seq_(clone.seq_.length){ 
+  memcpy(seq_.seq, clone.seq_.seq, seq_.size);
 }
 
 Dna::Dna(int length, Threefry::Gen& rng) : seq_(length) {
+  int8_t temp[length];
+  
   // Generate a random genome
-  for (int32_t i = 0; i < seq_.nbElem; i++) {
+  for (int32_t i = 0; i < length; i++) {
+    std::cout << std::to_string(i) << " " << std::endl;
+    temp[i] = rng.random(NB_BASE);
+  }
+  for (int32_t i = 0; i < seq_.nbElem - REPETITION_MARGIN; i++) {
+    std::cout << std::endl << std::to_string(i) << " " ;
+    seq_.seq[i] = 0;
+    for(int32_t j = 0; j < FRAME_SIZE; ++j){
+      std::cout << std::to_string(j) << " ";
+      seq_.seq[i] += temp[i * FRAME_SIZE + j] << (FRAME_SIZE - j - 1);
+    }
+  }
+  
+  std::cout << std::endl << " tadaaam " << std::endl;
+
+  /*
+  // faster generation, but it changes the seed : 
+  // Generate a random genome
+  int32_t index_bit = 0;
+  for (int32_t i = 0; i < seq_.nbElem - REPETITION_MARGIN; i++) {
     seq_.seq[i] = rng.random(UINT8_MAX);
+  }
+  
+*/
+  // repeat
+  int offset = length - ((length >> FRAME_SIZE_POW) << FRAME_SIZE_POW);
+  // TODO adapter la répétition pour les non-multiples de 8 !
+  if(offset != 0)
+    std::cout << "Please, the genome size must be a multiple of 8 (adaptation to be done)" << std::endl;
+  
+  for (int32_t i = seq_.nbElem - REPETITION_MARGIN; i < seq_.nbElem; i++ ){
+    seq_.seq[i] = seq_.seq[i - (seq_.nbElem - REPETITION_MARGIN)];
   }
 }
 

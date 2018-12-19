@@ -13,6 +13,9 @@
 
 #include "Threefry.h"
 
+// 4 * 8 > 22 needed for the repetition
+#define REPETITION_MARGIN 4
+
 #define FRAME_SIZE_POW 3
 #define FRAME_SIZE (1<<3)
 // index of the frame
@@ -46,7 +49,7 @@ struct Sequence {
   }
   Sequence(int length){
     this->length = length;
-    this->nbElem = ((length - 1)/sizeof(uint8_t) + 1);
+    this->nbElem = ((length - 1)/(sizeof(uint8_t)*8) + 1) + REPETITION_MARGIN; // byte to bit
     this->size = this->nbElem *  sizeof(uint8_t);
     this->seq = (uint8_t*) malloc(size);
   }
