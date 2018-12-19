@@ -53,6 +53,7 @@ struct Sequence {
     this->size = this->nbElem *  sizeof(uint8_t);
     this->seq = (uint8_t*) malloc(size);
   }
+  ~Sequence(){ if(length) free(seq);}
 };
 
 class Dna {

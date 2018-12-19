@@ -14,19 +14,14 @@ Dna::Dna(int length, Threefry::Gen& rng) : seq_(length) {
   
   // Generate a random genome
   for (int32_t i = 0; i < length; i++) {
-    std::cout << std::to_string(i) << " " << std::endl;
     temp[i] = rng.random(NB_BASE);
   }
   for (int32_t i = 0; i < seq_.nbElem - REPETITION_MARGIN; i++) {
-    std::cout << std::endl << std::to_string(i) << " " ;
     seq_.seq[i] = 0;
     for(int32_t j = 0; j < FRAME_SIZE; ++j){
-      std::cout << std::to_string(j) << " ";
       seq_.seq[i] += temp[i * FRAME_SIZE + j] << (FRAME_SIZE - j - 1);
     }
   }
-  
-  std::cout << std::endl << " tadaaam " << std::endl;
 
   /*
   // faster generation, but it changes the seed : 
