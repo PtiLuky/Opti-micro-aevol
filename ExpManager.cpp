@@ -126,6 +126,8 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
         auto random_organism = std::make_shared<Organism>(this, init_length_dna, 0);
         internal_organisms_[0] = random_organism;
 
+        // TODO enqueter, rarement il y a une petite différence avec ce qui est fait par l'ancien programme, comme si 
+        // qqs rares RNA étaient non trouvés
         start_stop_RNA(0);
         compute_RNA(0);
 

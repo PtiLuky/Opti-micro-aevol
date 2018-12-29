@@ -21,9 +21,9 @@
 // index of the frame
 #define FRAME(pos) ((pos) >> (FRAME_SIZE_POW)) // pos / FRAME_SIZE
 // index in frame from left
-#define INDEXFL(pos, frame) ((pos) - ((frame) << FRAME_SIZE_POW)); // pos - frame * FRAME_SIZE
+#define INDEXFL(pos, frame) ((pos) - ((frame) << FRAME_SIZE_POW)) // pos - frame * FRAME_SIZE
 // index in frame from right
-#define INDEXFR(pos, frame) ((((frame) + 1) << FRAME_SIZE_POW) - ((pos) + 1)); // (frame+1) * FRAME_SIZE - (pos+1)
+#define INDEXFR(pos, frame) ((((frame) + 1) << FRAME_SIZE_POW) - ((pos) + 1)) // (frame+1) * FRAME_SIZE - (pos+1)
 
 constexpr int32_t CODON_SIZE = 3;
 

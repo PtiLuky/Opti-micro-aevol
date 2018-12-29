@@ -80,7 +80,6 @@ void Dna::do_switch(int pos) {
 
 
 int Dna::promoter_at(int pos) {
-  // TODO modulo et sortie de range...
   int frame = FRAME(pos);
   int nb_elem_in_first_frame = FRAME_SIZE - INDEXFL(pos, frame); // starts at 1 !!!
   // keep only the begining of the prom
@@ -88,10 +87,14 @@ int Dna::promoter_at(int pos) {
 
   // rebuild the seg in a int32
   uint32_t seqAtPos;
-  seqAtPos = (seq_.seq[frame] & ((1 << nb_elem_in_first_frame) -1)) << left_after; // mask and left shift
-  for( ; left_after >=  FRAME_SIZE; left_after -= FRAME_SIZE)
-    seqAtPos += seq_.seq[++frame] << (left_after - FRAME_SIZE); // just read and left shift
-  seqAtPos += seq_.seq[++frame] >> (FRAME_SIZE - left_after); // right shift
+  if(left_after > 0){
+    seqAtPos = (seq_.seq[frame] & ((1 << nb_elem_in_first_frame) -1)) << left_after; // mask and left shift
+    for( ; left_after >  FRAME_SIZE; left_after -= FRAME_SIZE)
+      seqAtPos += seq_.seq[++frame] << (left_after - FRAME_SIZE); // just read and left shift
+    seqAtPos += seq_.seq[++frame] >> (FRAME_SIZE - left_after); // right shift
+  } else {
+    seqAtPos = (seq_.seq[frame] >> (-left_after) & ((1<<PROM_SEQ_L)-1));
+  }
 
   // hamming weight of the XOR
   uint32_t diff = PROM_SEQ ^ seqAtPos;
