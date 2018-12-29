@@ -10,6 +10,34 @@ Dna::Dna(const Dna& clone) : seq_(clone.seq_.length){
 }
 
 Dna::Dna(int length, Threefry::Gen& rng) : seq_(length) {
+
+  uint32_t max = 0 - 1;
+  for (int32_t i = 0; i < seq_.nbElem - REPETITION_MARGIN; i++) {
+    seq_.seq[i] = rng.random(max);
+  }
+  for (int32_t i = seq_.nbElem - REPETITION_MARGIN; i < seq_.nbElem; i++) {
+    seq_.seq[i] = 0;
+    for(int32_t j = 0; j < FRAME_SIZE; ++j){
+      int pos = i * FRAME_SIZE + j;
+      if(pos < length)
+      {
+        // random generate
+        seq_.seq[i] += rng.random(NB_BASE) << (FRAME_SIZE - j - 1);
+      }
+      else
+      {
+        // repeat
+        int frame = FRAME(pos - length);
+        int p_in_frame_from_r = INDEXFR(pos - length, frame);
+        seq_.seq[i] += 
+          (((seq_.seq[frame] >> p_in_frame_from_r)
+            & 0b1)
+          << (FRAME_SIZE - j - 1));
+      }
+    }
+  }
+  // Old seed generator (slower) :
+  /*
   for (int32_t i = 0; i < seq_.nbElem; i++) {
     seq_.seq[i] = 0;
     for(int32_t j = 0; j < FRAME_SIZE; ++j){
@@ -31,6 +59,7 @@ Dna::Dna(int length, Threefry::Gen& rng) : seq_(length) {
       }
     }
   }
+  */
 }
 
 Dna::Dna(uint32_t* genome, int length) : seq_(length) {
