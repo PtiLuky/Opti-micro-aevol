@@ -24,6 +24,18 @@
 #define INDEXFL(pos, frame) ((pos) - ((frame) << FRAME_SIZE_POW)) // pos - frame * FRAME_SIZE
 // index in frame from right
 #define INDEXFR(pos, frame) ((((frame) + 1) << FRAME_SIZE_POW) - ((pos) + 1)) // (frame+1) * FRAME_SIZE - (pos+1)
+// left move
+#define LEFT(x, a) ((x) << (a))
+// right move
+#define RIGHT(x, a) ((x) >> (a))
+// keep a first bits on a total length of len
+#define FIRST(x, a, len) ((x) >> ((len)-(a)))
+// keep a last bits
+#define LAST(x, a) ((x) & ((1 << (a)) - 1))
+// bit at a (from right)
+#define AT(x, a) (((x) >> (a)) & 0b1)
+// set var count as the number of bit at 1 in x (count must be a l-value)
+#define COUNT(x, count) for(count = 0 ; (x); ++count) (x) &= (x) - 1
 
 constexpr int32_t CODON_SIZE = 3;
 
