@@ -10,40 +10,30 @@ Dna::Dna(const Dna& clone) : seq_(clone.seq_.length){
 }
 
 Dna::Dna(int length, Threefry::Gen& rng) : seq_(length) {
-  int8_t temp[length];
-  
-  // Generate a random genome
-  for (int32_t i = 0; i < length; i++) {
-    temp[i] = rng.random(NB_BASE);
-  }
-  for (int32_t i = 0; i < seq_.nbElem - REPETITION_MARGIN; i++) {
+  for (int32_t i = 0; i < seq_.nbElem; i++) {
     seq_.seq[i] = 0;
     for(int32_t j = 0; j < FRAME_SIZE; ++j){
-      seq_.seq[i] += temp[i * FRAME_SIZE + j] << (FRAME_SIZE - j - 1);
+      int pos = i * FRAME_SIZE + j;
+      if(pos < length)
+      {
+        // random generate
+        seq_.seq[i] += rng.random(NB_BASE) << (FRAME_SIZE - j - 1);
+      }
+      else
+      {
+        // repeat
+        int frame = FRAME(pos - length);
+        int p_in_frame_from_r = INDEXFR(pos - length, frame);
+        seq_.seq[i] += 
+          (((seq_.seq[frame] >> p_in_frame_from_r)
+            & 0b1)
+          << (FRAME_SIZE - j - 1));
+      }
     }
-  }
-
-  /*
-  // faster generation, but it changes the seed : 
-  // Generate a random genome
-  int32_t index_bit = 0;
-  for (int32_t i = 0; i < seq_.nbElem - REPETITION_MARGIN; i++) {
-    seq_.seq[i] = rng.random(UINT8_MAX);
-  }
-  
-*/
-  // repeat
-  int offset = length - ((length >> FRAME_SIZE_POW) << FRAME_SIZE_POW);
-  // TODO adapter la répétition pour les non-multiples de 8 !
-  if(offset != 0)
-    std::cout << "Please, the genome size must be a multiple of 8 (adaptation to be done)" << std::endl;
-  
-  for (int32_t i = seq_.nbElem - REPETITION_MARGIN; i < seq_.nbElem; i++ ){
-    seq_.seq[i] = seq_.seq[i - (seq_.nbElem - REPETITION_MARGIN)];
   }
 }
 
-Dna::Dna(uint8_t* genome, int length) : seq_(length) {
+Dna::Dna(uint32_t* genome, int length) : seq_(length) {
   memcpy(seq_.seq, genome, seq_.size);
 }
 
@@ -74,7 +64,7 @@ void Dna::set(int pos, bool c) {
   // those macro are defined in Dna.h
   int frame = FRAME(pos);
   int p_in_frame_from_r = INDEXFR(pos, frame);
-  uint8_t mask = 1 << p_in_frame_from_r;
+  uint32_t mask = 1 << p_in_frame_from_r;
 
   if(c) seq_.seq[frame] |= mask; // set 1
   else seq_.seq[frame] &= ~mask; // set 0
@@ -83,7 +73,7 @@ void Dna::set(int pos, bool c) {
 void Dna::do_switch(int pos) {
   int frame = FRAME(pos);
   int p_in_frame_from_r = INDEXFR(pos, frame);
-  uint8_t mask = 1 << p_in_frame_from_r;
+  uint32_t mask = 1 << p_in_frame_from_r;
 
   seq_.seq[frame] ^= mask;
 }
@@ -113,7 +103,6 @@ int Dna::promoter_at(int pos) {
 
 int Dna::terminator_at(int pos) {
   // Only works for eSIZE <= FRAME_SIZE + 1
-  // TODO modulo et sortie de range...
   int eSIZE = 4;
   int eOFFSET = 10;
   int frame;
@@ -125,25 +114,22 @@ int Dna::terminator_at(int pos) {
   nb_elem_in_first_frame = FRAME_SIZE - INDEXFL(pos, frame); // starts at 1 !!!
   left_over = eSIZE - nb_elem_in_first_frame;
   if (left_over > 0){
-    seqAtPos = (seq_.seq[frame] >> nb_elem_in_first_frame) & ((1 << nb_elem_in_first_frame) - 1)
+    seqAtPos = (seq_.seq[frame] & ((1 << nb_elem_in_first_frame) - 1))
       << left_over; // shift right and mask and left shift
-    seqAtPos+= seq_.seq[++frame] >> (FRAME_SIZE - left_over);
+    seqAtPos+= seq_.seq[frame+1] >> (FRAME_SIZE - left_over);
   } else {
     seqAtPos = (seq_.seq[frame] >> (-left_over)) 
       & ((1 << eSIZE) - 1); // shift right and mask
   }
 
-  uint32_t seqAtOffset;
-  frame = FRAME(pos+eOFFSET);
-  nb_elem_in_first_frame = FRAME_SIZE - INDEXFL(pos+eOFFSET, frame); // starts at 1 !!!
-  left_over = eSIZE - nb_elem_in_first_frame;
-  if (left_over > 0){
-    seqAtOffset = (seq_.seq[frame] >> nb_elem_in_first_frame) & ((1 << nb_elem_in_first_frame) - 1)
-      << left_over; // shift right and mask and left shift
-    seqAtOffset+= seq_.seq[++frame] >> (FRAME_SIZE - left_over);
-  } else {
-    seqAtOffset = (seq_.seq[frame] >> (-left_over)) 
-      & ((1 << eSIZE) - 1); // shift right and mask
+  uint32_t seqAtOffset = 0;
+  for(int i = 0; i < eSIZE; ++i){
+    int index2 = pos + eOFFSET - eSIZE + 1 + i;
+    frame = FRAME(index2);
+    int p_in_frame_from_r = INDEXFR(index2, frame);
+    seqAtOffset += ( 
+      ((seq_.seq[frame] >> p_in_frame_from_r) & 1)
+      << i);
   }
 
   uint32_t diff = seqAtPos ^ seqAtOffset;
@@ -154,7 +140,6 @@ int Dna::terminator_at(int pos) {
 }
 
 bool Dna::shine_dal_start(int pos) {
-  // TODO modulo et sortie de range...
   bool start = false;
 
   int frame = FRAME(pos);
@@ -163,7 +148,8 @@ bool Dna::shine_dal_start(int pos) {
 
   for (int k = 0; k < 9; k++) {
     t_index = index + (k >= 6 ? k + 4 : k);
-    for(t_frame = frame; t_index > FRAME_SIZE ; ++t_frame, t_index -= FRAME_SIZE);
+
+    for(t_frame = frame; t_index >= FRAME_SIZE ; ++t_frame, t_index -= FRAME_SIZE);
 
     // XOR then mask on last bit
     bool diff = 0b1 & (
@@ -192,7 +178,7 @@ bool Dna::protein_stop(int pos) {
 
   for (int k = 0; k < 3; k++) {
     t_index = index + k;
-    for(t_frame = frame; t_index > FRAME_SIZE ; ++t_frame, t_index -= FRAME_SIZE);
+    for(t_frame = frame; t_index >= FRAME_SIZE ; ++t_frame, t_index -= FRAME_SIZE);
     
     // XOR then mask on last bit
     bool diff = 0b1 & (
@@ -221,7 +207,7 @@ int Dna::codon_at(int pos) {
 
   for (int i = 0; i < 3; i++) {
     t_index = index + i;
-    for(t_frame = frame; t_index > FRAME_SIZE ; ++t_frame, t_index -= FRAME_SIZE);
+    for(t_frame = frame; t_index >= FRAME_SIZE ; ++t_frame, t_index -= FRAME_SIZE);
 
     bool isOne = 0b1 & (seq_.seq[t_frame] >> (FRAME_SIZE - t_index - 1));
     if (isOne)

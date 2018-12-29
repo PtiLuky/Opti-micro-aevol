@@ -131,13 +131,13 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
 
         start_protein(0);
         compute_protein(0);
-
+    
         translate_protein(0, w_max);
-
+    
         compute_phenotype(0);
-
+    
         compute_fitness(0, selection_pressure);
-
+    
         r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
     }
 
@@ -1379,8 +1379,8 @@ void ExpManager::run_evolution(int nb_gen) {
         delete dna_mutator_array_[indiv_id];
         dna_mutator_array_[indiv_id] = new DnaMutator(
                 &rng,
-                // where next_generation_reproducer_ is not set...
-                // prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
+                // here next_generation_reproducer_ is not set...
+                //prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
                 prev_internal_organisms_[0]->length(),
                 mutation_rate_, indiv_id);
         dna_mutator_array_[indiv_id]->setMutate(true);

@@ -170,7 +170,7 @@ int main(int argc, char* argv[]) {
         if (width == -1) width = 32;
         if (height == -1) height = 32;
         if (mutation_rate == -1) mutation_rate = 0.00001;
-        if (genome_size == -1) genome_size = 5000; // use a multiple of 8
+        if (genome_size == -1) genome_size = 5000;
         if (backup_step == -1) backup_step = 1000;
         if (seed == -1) seed = 566545665;
     }

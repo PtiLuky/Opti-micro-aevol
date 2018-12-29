@@ -13,19 +13,19 @@
 
 #include "Threefry.h"
 
-// 4 * 8 > 22 needed for the repetition
-#define REPETITION_MARGIN 4
+// REPETITION_MARGIN * FRAME_SIZE > 22 needed for the repetition
+#define REPETITION_MARGIN 1
 
-#define FRAME_SIZE_POW 3
-#define FRAME_SIZE (1<<3)
+#define FRAME_SIZE_POW 5
+#define FRAME_SIZE (1<<FRAME_SIZE_POW)
 // index of the frame
-#define FRAME(pos) ((pos) >> (FRAME_SIZE_POW)) // pos / 8
+#define FRAME(pos) ((pos) >> (FRAME_SIZE_POW)) // pos / FRAME_SIZE
 // index in frame from left
-#define INDEXFL(pos, frame) ((pos) - ((frame) << FRAME_SIZE_POW)); // pos - frame * 8
+#define INDEXFL(pos, frame) ((pos) - ((frame) << FRAME_SIZE_POW)); // pos - frame * FRAME_SIZE
 // index in frame from right
-#define INDEXFR(pos, frame) ((((frame) + 1) << FRAME_SIZE_POW) - ((pos) + 1)); // (frame+1) * 8 - (pos+1)
+#define INDEXFR(pos, frame) ((((frame) + 1) << FRAME_SIZE_POW) - ((pos) + 1)); // (frame+1) * FRAME_SIZE - (pos+1)
 
-constexpr int8_t CODON_SIZE = 3;
+constexpr int32_t CODON_SIZE = 3;
 
 constexpr const uint32_t PROM_SEQ = 0b0101011001110010010110;
 constexpr const int PROM_SEQ_L = 22;
@@ -38,7 +38,7 @@ constexpr const int PROTEIN_END_L = 3; // CODON_STOP
 class ExpManager;
 
 struct Sequence {
-  uint8_t* seq;
+  uint32_t* seq;
   int length; // size of usefull data
   int nbElem; // nb of elem
   int size; // true size
@@ -49,9 +49,9 @@ struct Sequence {
   }
   Sequence(int length){
     this->length = length;
-    this->nbElem = ((length - 1)/(sizeof(uint8_t)*8) + 1) + REPETITION_MARGIN; // byte to bit
-    this->size = this->nbElem *  sizeof(uint8_t);
-    this->seq = (uint8_t*) malloc(size);
+    this->nbElem = ((length - 1)/(sizeof(uint32_t)*8) + 1) + REPETITION_MARGIN; // byte to bit
+    this->size = this->nbElem *  sizeof(uint32_t);
+    this->seq = (uint32_t*) malloc(size);
   }
   ~Sequence(){ if(length) free(seq);}
 };
@@ -65,7 +65,7 @@ class Dna {
 
   Dna(int length, Threefry::Gen& rng);
 
-  Dna(uint8_t* genome, int length);
+  Dna(uint32_t* genome, int length);
 
   Dna(int length);
 
@@ -90,6 +90,5 @@ class Dna {
 
   int codon_at(int pos);
 
-  // std::vector<char> seq_;
   struct Sequence seq_;
 };
