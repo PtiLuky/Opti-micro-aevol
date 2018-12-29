@@ -126,18 +126,20 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
         auto random_organism = std::make_shared<Organism>(this, init_length_dna, 0);
         internal_organisms_[0] = random_organism;
 
+        // TODO enqueter, rarement il y a une petite différence avec ce qui est fait par l'ancien programme, comme si 
+        // qqs rares RNA étaient non trouvés
         start_stop_RNA(0);
         compute_RNA(0);
 
         start_protein(0);
         compute_protein(0);
-
+    
         translate_protein(0, w_max);
-
+    
         compute_phenotype(0);
-
+    
         compute_fitness(0, selection_pressure);
-
+    
         r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
     }
 
@@ -1379,7 +1381,9 @@ void ExpManager::run_evolution(int nb_gen) {
         delete dna_mutator_array_[indiv_id];
         dna_mutator_array_[indiv_id] = new DnaMutator(
                 &rng,
-                prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
+                // here next_generation_reproducer_ is not set...
+                //prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
+                prev_internal_organisms_[0]->length(),
                 mutation_rate_, indiv_id);
         dna_mutator_array_[indiv_id]->setMutate(true);
 
@@ -1394,7 +1398,7 @@ void ExpManager::run_evolution(int nb_gen) {
 
         compute_fitness(indiv_id, selection_pressure_);
     }
-
+    
     printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);
     bool firstGen = true;
     for (int gen = 0; gen < nb_gen+1; gen++) {
