@@ -23,7 +23,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 // ***************************************************************************************************************
-
+#define NBTHREADS 8
 
 #include <cmath>
 #include <map>
@@ -121,7 +121,7 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     // Generate a random organism that is better than nothing
     bool found_good_random = false;
     // NO ! DO NOT make it parallel like that : we lose repetability !! (random generation)
-    //#pragma omp parallel
+    //#pragma omp parallel num_threads(NBTHREADS)
     while(1) {
         bool local_found;
         //#pragma omp atomic read
@@ -412,7 +412,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
     // Running the simulation process for each organism
     {
         high_resolution_clock::time_point t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             selection(indiv_id);
         }
@@ -420,9 +420,8 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
         auto duration_selection = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         t1 = high_resolution_clock::now();
-        // NO ! DO NOT make it parallel like that : we lose repetability !! (random generation)
-        // TODO check avec Jonathan, on perd quasi 50% du temps ici
-        // #pragma omp parallel for
+        // TODO check avec Jonathan pour la répétabilité
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             do_mutation(indiv_id);
         }
@@ -430,7 +429,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
         auto duration_mutation = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             opt_prom_compute_RNA(indiv_id);
         }
@@ -438,7 +437,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
         auto duration_start_stop_RNA = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
                 start_protein(internal_organisms_[indiv_id]);
@@ -449,7 +448,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
                 compute_protein(internal_organisms_[indiv_id]);
@@ -460,7 +459,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
                 translate_protein(internal_organisms_[indiv_id], w_max);
@@ -471,7 +470,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
                 compute_phenotype(internal_organisms_[indiv_id]);
@@ -482,7 +481,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(NBTHREADS)
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
                 compute_fitness(internal_organisms_[indiv_id], selection_pressure);
@@ -1374,7 +1373,7 @@ void ExpManager::selection(int indiv_id) {
  * @param nb_gen : Number of generations to simulate
  */
 void ExpManager::run_evolution(int nb_gen) {
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(NBTHREADS)
     for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
         auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
 
