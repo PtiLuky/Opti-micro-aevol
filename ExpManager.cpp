@@ -83,7 +83,6 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     Gaussian* g2 = new Gaussian(-1.4,0.5,0.07);
     Gaussian* g3 = new Gaussian(0.3,0.8,0.03);
 
-    // TODO CUDA here
     target = new double[300];
     for (int i = 0; i < 300; i++) {
         double pt_i = ((double)i)/300.0;
@@ -105,9 +104,8 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     geometric_area_ = 0;
 
     // (fabs is float/double absolute function)
-    // TODO virer fabs qui est un relicat d'un vieux copier-coller
     for (int i = 0; i < 298; i++) {
-        geometric_area_+=((fabs(target[i]) + fabs(target[i+1])) / (600.0));
+        geometric_area_+=((target[i] + target[i+1]) / (600.0));
     }
 
     printf("Initialized environmental target %f\n",geometric_area_);
@@ -118,35 +116,47 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
         dna_mutator_array_[indiv_id] = nullptr;
     }
 
-    // Generate a random organism that is better than nothing
-    double r_compare = 0;
 
-    // TODO boucle exécutée plus de 800 fois, à paralliser : CUDA : porter sous fonctions en CUDA + gérer obj en mémoire (arrays)
-    while(r_compare >= 0) {
+    // Generate a random organism that is better than nothing
+    bool found_good_random = false;
+    // NO ! DO NOT make it parallel like that : we lose repetability !! (random generation)
+    //#pragma omp parallel
+    while(1) {
+        bool local_found;
+        //#pragma omp atomic read
+        local_found = found_good_random;
+        if(local_found){
+            break;
+        }
         auto random_organism = std::make_shared<Organism>(this, init_length_dna, 0);
-        internal_organisms_[0] = random_organism;
+        
 
         // TODO enqueter, rarement il y a une petite différence avec ce qui est fait par l'ancien programme, comme si 
         // qqs rares RNA étaient non trouvés
-        start_stop_RNA(0);
-        compute_RNA(0);
+        start_stop_RNA(random_organism);
+        compute_RNA(random_organism);
 
-        start_protein(0);
-        compute_protein(0);
+        start_protein(random_organism);
+        compute_protein(random_organism);
     
-        translate_protein(0, w_max);
+        translate_protein(random_organism, w_max);
     
-        compute_phenotype(0);
+        compute_phenotype(random_organism);
     
-        compute_fitness(0, selection_pressure);
+        compute_fitness(random_organism, selection_pressure);
     
-        r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
+        double r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
+        if(r_compare < 0){
+            //#pragma omp critical
+            internal_organisms_[0] = random_organism;
+            //#pragma omp atomic write
+            found_good_random = true;
+        }
     }
 
     printf("Populating the environment\n");
 
     // Create a population of clones based on the randomly generated organism
-    // TODO paralleliser CUDA
     for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
         prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id] =
             std::make_shared<Organism>(this, internal_organisms_[0]);
@@ -401,6 +411,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
     // Running the simulation process for each organism
     {
         high_resolution_clock::time_point t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             selection(indiv_id);
         }
@@ -408,6 +419,9 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
         auto duration_selection = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         t1 = high_resolution_clock::now();
+        // NO ! DO NOT make it parallel like that : we lose repetability !! (random generation)
+        // TODO check avec Jonathan, on perd quasi 50% du temps ici
+        // #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             do_mutation(indiv_id);
         }
@@ -415,6 +429,7 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
         auto duration_mutation = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             opt_prom_compute_RNA(indiv_id);
         }
@@ -422,9 +437,10 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
         auto duration_start_stop_RNA = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
-                start_protein(indiv_id);
+                start_protein(internal_organisms_[indiv_id]);
             }
         }
         t2 = high_resolution_clock::now();
@@ -432,9 +448,10 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
-                compute_protein(indiv_id);
+                compute_protein(internal_organisms_[indiv_id]);
             }
         }
         t2 = high_resolution_clock::now();
@@ -442,9 +459,10 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
-                translate_protein(indiv_id, w_max);
+                translate_protein(internal_organisms_[indiv_id], w_max);
             }
         }
         t2 = high_resolution_clock::now();
@@ -452,9 +470,10 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
-                compute_phenotype(indiv_id);
+                compute_phenotype(internal_organisms_[indiv_id]);
             }
         }
         t2 = high_resolution_clock::now();
@@ -462,9 +481,10 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 
 
         t1 = high_resolution_clock::now();
+        #pragma omp parallel for
         for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
             if (dna_mutator_array_[indiv_id]->hasMutate()) {
-                compute_fitness(indiv_id, selection_pressure);
+                compute_fitness(internal_organisms_[indiv_id], selection_pressure);
             }
         }
         t2 = high_resolution_clock::now();
@@ -545,28 +565,26 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
  *
  * @param indiv_id : Unique identification number of the organism
  */
-void ExpManager::start_stop_RNA(int indiv_id) {
+void ExpManager::start_stop_RNA(std::shared_ptr<Organism> indiv) {
 
-    for (int dna_pos = 0; dna_pos < internal_organisms_[indiv_id]->length(); dna_pos++) {
-        if (internal_organisms_[indiv_id]->length() >= PROM_SIZE) {
-            int dist_lead = internal_organisms_[indiv_id]->dna_->promoter_at(dna_pos);
+    for (int dna_pos = 0; dna_pos < indiv->length(); dna_pos++) {
+        if (indiv->length() >= PROM_SIZE) {
+            int dist_lead = indiv->dna_->promoter_at(dna_pos);
 
             if (dist_lead <= 4) {
                 Promoter* nprom = new Promoter(dna_pos, dist_lead);
-                int prom_idx = internal_organisms_[indiv_id]->count_prom;
-                internal_organisms_[indiv_id]->count_prom =
-                            internal_organisms_[indiv_id]->count_prom + 1;
+                int prom_idx = indiv->count_prom;
+                indiv->count_prom = indiv->count_prom + 1;
 
-                internal_organisms_[indiv_id]->promoters[prom_idx] = nprom;
-                internal_organisms_[indiv_id]->prom_pos[dna_pos] = prom_idx;
+                indiv->promoters[prom_idx] = nprom;
+                indiv->prom_pos[dna_pos] = prom_idx;
             }
 
             // Computing if a terminator exists at that position
-            int dist_term_lead = internal_organisms_[indiv_id]->dna_->terminator_at(dna_pos);
+            int dist_term_lead = indiv->dna_->terminator_at(dna_pos);
 
             if (dist_term_lead == 4) {
-                internal_organisms_[indiv_id]->terminators.insert(
-                        dna_pos);
+                indiv->terminators.insert(dna_pos);
             }
         }
     }
@@ -679,43 +697,39 @@ void ExpManager::opt_prom_compute_RNA(int indiv_id) {
  *
  * @param indiv_id : Unique identification number of the organism
  */
-void ExpManager::compute_RNA(int indiv_id) {
-    internal_organisms_[indiv_id]->rnas.resize(
-            internal_organisms_[indiv_id]->promoters.size());
+void ExpManager::compute_RNA(std::shared_ptr<Organism> indiv) {
+    indiv->rnas.resize(indiv->promoters.size());
 
-    for (int rna_idx = 0; rna_idx <
-                          (int) internal_organisms_[indiv_id]->promoters.size(); rna_idx++) {
+    for (int rna_idx = 0; rna_idx < (int) indiv->promoters.size(); rna_idx++) {
         {
-            if (internal_organisms_[indiv_id]->promoters[rna_idx] != nullptr) {
-                if (internal_organisms_[indiv_id]->terminators.size() != 0) {
+            if (indiv->promoters[rna_idx] != nullptr) {
+                if (indiv->terminators.size() != 0) {
 
 
-                    int k =
-                            internal_organisms_[indiv_id]->promoters[rna_idx]->pos + 22;
-                    k = k >= internal_organisms_[indiv_id]->length() ? k - internal_organisms_[indiv_id]->length() : k;
+                    int k = indiv->promoters[rna_idx]->pos + 22;
+                    k = k >= indiv->length() ? k - indiv->length() : k;
 
-                    auto it_rna_end = internal_organisms_[indiv_id]->terminators.lower_bound(
+                    auto it_rna_end = indiv->terminators.lower_bound(
                             k);
 
-                    if (it_rna_end ==
-                        internal_organisms_[indiv_id]->terminators.end()) {
-                        it_rna_end = internal_organisms_[indiv_id]->terminators.begin();
+                    if (it_rna_end == indiv->terminators.end()) {
+                        it_rna_end = indiv->terminators.begin();
                     }
 
                     int rna_end =
-                            *it_rna_end + 10 >= internal_organisms_[indiv_id]->length() ?
-                            *it_rna_end + 10 - internal_organisms_[indiv_id]->length() :
+                            *it_rna_end + 10 >= indiv->length() ?
+                            *it_rna_end + 10 - indiv->length() :
                             *it_rna_end + 10;
 
                     int rna_length = 0;
 
-                    if (internal_organisms_[indiv_id]->promoters[rna_idx]->pos
+                    if (indiv->promoters[rna_idx]->pos
                         > rna_end)
-                        rna_length = internal_organisms_[indiv_id]->length() -
-                                     internal_organisms_[indiv_id]->promoters[rna_idx]->pos
+                        rna_length = indiv->length() -
+                                     indiv->promoters[rna_idx]->pos
                                      + rna_end;
                     else
-                        rna_length = rna_end - internal_organisms_[indiv_id]->
+                        rna_length = rna_end - indiv->
                                 promoters[rna_idx]->pos;
 
                     rna_length -= 21;
@@ -723,16 +737,15 @@ void ExpManager::compute_RNA(int indiv_id) {
                     if (rna_length >= 0) {
 
 
-                        int glob_rna_idx = internal_organisms_[indiv_id]->rna_count_;
-                        internal_organisms_[indiv_id]->rna_count_ =
-                                internal_organisms_[indiv_id]->rna_count_ + 1;
+                        int glob_rna_idx = indiv->rna_count_;
+                        indiv->rna_count_ = indiv->rna_count_ + 1;
 
-                        internal_organisms_[indiv_id]->rnas[glob_rna_idx] = new RNA(
-                                internal_organisms_[indiv_id]->promoters[rna_idx]->pos,
+                        indiv->rnas[glob_rna_idx] = new RNA(
+                                indiv->promoters[rna_idx]->pos,
                                 rna_end,
                                 1.0 -
                                 std::fabs(
-                                        ((float) internal_organisms_[indiv_id]->promoters[rna_idx]->error)) /
+                                        ((float) indiv->promoters[rna_idx]->error)) /
                                 5.0, rna_length);
                     }
                 }
@@ -747,34 +760,32 @@ void ExpManager::compute_RNA(int indiv_id) {
  *
  * @param indiv_id : Unique identification number of the organism
  */
-void ExpManager::start_protein(int indiv_id) {
-    for (int rna_idx = 0; rna_idx <
-                          (int) internal_organisms_[indiv_id]->rna_count_; rna_idx++) {
+void ExpManager::start_protein(std::shared_ptr<Organism> indiv) {
+    for (int rna_idx = 0; rna_idx < (int) indiv->rna_count_; rna_idx++) {
         {
-            if (internal_organisms_[indiv_id]->rnas[rna_idx]->is_init_) {
-                int c_pos = internal_organisms_[indiv_id]->rnas[rna_idx]->begin;
-                if (internal_organisms_[indiv_id]->rnas[rna_idx]->length >= 22) {
+            if (indiv->rnas[rna_idx]->is_init_) {
+                int c_pos = indiv->rnas[rna_idx]->begin;
+                if (indiv->rnas[rna_idx]->length >= 22) {
 
                     c_pos += 22;
                     c_pos =
-                            c_pos >= internal_organisms_[indiv_id]->length() ?
-                            c_pos - internal_organisms_[indiv_id]->length()
+                            c_pos >= indiv->length() ?
+                            c_pos - indiv->length()
                                                                              : c_pos;
 
-                    while (c_pos !=
-                           internal_organisms_[indiv_id]->rnas[rna_idx]->end) {
+                    while (c_pos != indiv->rnas[rna_idx]->end) {
 
 
-                        if (internal_organisms_[indiv_id]->dna_->shine_dal_start(c_pos)) {
-                            internal_organisms_[indiv_id]->rnas[rna_idx]->start_prot.
+                        if (indiv->dna_->shine_dal_start(c_pos)) {
+                            indiv->rnas[rna_idx]->start_prot.
                                     push_back(c_pos);
                         }
 
 
                         c_pos++;
                         c_pos =
-                                c_pos >= internal_organisms_[indiv_id]->length() ?
-                                c_pos - internal_organisms_[indiv_id]->length()
+                                c_pos >= indiv->length() ?
+                                c_pos - indiv->length()
                                                                                  : c_pos;
                     }
                 }
@@ -788,51 +799,40 @@ void ExpManager::start_protein(int indiv_id) {
  *
  * @param indiv_id : Unique identification number of the organism
  */
-void ExpManager::compute_protein(int indiv_id) {
+void ExpManager::compute_protein(std::shared_ptr<Organism> indiv) {
 
         int resize_to = 0;
 
-        for (int rna_idx = 0; rna_idx <
-                              (int) internal_organisms_[indiv_id]->rna_count_; rna_idx++) {
-            if (internal_organisms_[indiv_id]->rnas[rna_idx]->is_init_)
-                resize_to += internal_organisms_[indiv_id]->
-                        rnas[rna_idx]->start_prot.size();
+        for (int rna_idx = 0; rna_idx < (int) indiv->rna_count_; rna_idx++) {
+            if (indiv->rnas[rna_idx]->is_init_)
+                resize_to += indiv->rnas[rna_idx]->start_prot.size();
         }
 
 
-    internal_organisms_[indiv_id]->
-                proteins.resize(resize_to);
+    indiv->proteins.resize(resize_to);
 
-    for (int rna_idx = 0; rna_idx <
-                          (int) internal_organisms_[indiv_id]->rna_count_; rna_idx++) {
-        if (internal_organisms_[indiv_id]->rnas[rna_idx]->is_init_) {
+    for (int rna_idx = 0; rna_idx < (int) indiv->rna_count_; rna_idx++) {
+        if (indiv->rnas[rna_idx]->is_init_) {
             for (int protein_idx = 0;
-                 protein_idx < (int) internal_organisms_[indiv_id]->
-                         rnas[rna_idx]->start_prot.size(); protein_idx++) {
-                    int start_protein_pos = internal_organisms_[indiv_id]->
-                                                    rnas[rna_idx]->start_prot[protein_idx] + 13;
+                 protein_idx < (int) indiv->rnas[rna_idx]->start_prot.size(); protein_idx++) {
+                    int start_protein_pos = indiv->rnas[rna_idx]->start_prot[protein_idx] + 13;
 
 
                     int length;
 
-                        start_protein_pos = start_protein_pos >= internal_organisms_[indiv_id]->length() ?
-                                            start_protein_pos - internal_organisms_[indiv_id]->length()
+                        start_protein_pos = start_protein_pos >= indiv->length() ?
+                                            start_protein_pos - indiv->length()
                                                                                     : start_protein_pos;
 
-                        if (internal_organisms_[indiv_id]->
+                        if (indiv->
                                 rnas[rna_idx]->start_prot[protein_idx] <
-                                internal_organisms_[indiv_id]->
-                                    rnas[rna_idx]->end) {
-                            length = internal_organisms_[indiv_id]->
-                                    rnas[rna_idx]->end -
-                                    internal_organisms_[indiv_id]->
-                                             rnas[rna_idx]->start_prot[protein_idx];
+                                indiv->rnas[rna_idx]->end) {
+                            length = indiv->rnas[rna_idx]->end -
+                            indiv->rnas[rna_idx]->start_prot[protein_idx];
                         } else {
-                            length = internal_organisms_[indiv_id]->length() -
-                                    internal_organisms_[indiv_id]->
-                                             rnas[rna_idx]->start_prot[protein_idx] +
-                                    internal_organisms_[indiv_id]->
-                                             rnas[rna_idx]->end;
+                            length = indiv->length() -
+                                    indiv->rnas[rna_idx]->start_prot[protein_idx] +
+                                    indiv->rnas[rna_idx]->end;
 
                         }
 
@@ -848,21 +848,20 @@ void ExpManager::compute_protein(int indiv_id) {
                     int transcribed_start = 0;
 
 
-                        transcribed_start = internal_organisms_[indiv_id]->
-                                rnas[rna_idx]->begin + 22;
-                        transcribed_start = transcribed_start >= internal_organisms_[indiv_id]->length() ?
-                                            transcribed_start - internal_organisms_[indiv_id]->length()
+                        transcribed_start = indiv->rnas[rna_idx]->begin + 22;
+                        transcribed_start = transcribed_start >= indiv->length() ?
+                                            transcribed_start - indiv->length()
                                                                                     : transcribed_start;
 
-                        if (transcribed_start <= internal_organisms_[indiv_id]->
+                        if (transcribed_start <= indiv->
                                 rnas[rna_idx]->start_prot[protein_idx]) {
-                            j = internal_organisms_[indiv_id]->
+                            j = indiv->
                                     rnas[rna_idx]->start_prot[protein_idx] -
                                 transcribed_start;
                         } else {
-                            j = internal_organisms_[indiv_id]->length() -
+                            j = indiv->length() -
                                 transcribed_start +
-                                    internal_organisms_[indiv_id]->
+                                    indiv->
                                         rnas[rna_idx]->start_prot[protein_idx];
 
                         }
@@ -871,56 +870,56 @@ void ExpManager::compute_protein(int indiv_id) {
                     j += 13;
 
 
-                while (internal_organisms_[indiv_id]->
+                while (indiv->
                             rnas[rna_idx]->length - j >= 3) {
 
                         int t_k;
 
 
                             start_protein_pos =
-                                    start_protein_pos >= internal_organisms_[indiv_id]->length() ?
-                                    start_protein_pos - internal_organisms_[indiv_id]->length()
+                                    start_protein_pos >= indiv->length() ?
+                                    start_protein_pos - indiv->length()
                                                                             : start_protein_pos;
 
-                            is_protein = internal_organisms_[indiv_id]->dna_->protein_stop(start_protein_pos);
+                            is_protein = indiv->dna_->protein_stop(start_protein_pos);
 
 
 
                     if (is_protein) {
                                 int prot_length = -1;
 
-                        t_k = start_protein_pos + 2 >= internal_organisms_[indiv_id]->length() ?
-                              start_protein_pos - internal_organisms_[indiv_id]->length() + 2 :
+                        t_k = start_protein_pos + 2 >= indiv->length() ?
+                              start_protein_pos - indiv->length() + 2 :
                               start_protein_pos + 2;
 
-                                if (internal_organisms_[indiv_id]->
+                                if (indiv->
                                         rnas[rna_idx]->start_prot[protein_idx] + 13 < t_k) {
                                     prot_length = t_k -
-                                                  (internal_organisms_[indiv_id]->
+                                                  (indiv->
                                                           rnas[rna_idx]->start_prot[protein_idx] +
                                                    13);
                                 } else {
-                                    prot_length = internal_organisms_[indiv_id]->length() -
-                                                  (internal_organisms_[indiv_id]->
+                                    prot_length = indiv->length() -
+                                                  (indiv->
                                                           rnas[rna_idx]->start_prot[protein_idx] +
                                                    13) + t_k;
                                 }
 
                                 if (prot_length >= 3) {
-                                    int glob_prot_idx = internal_organisms_[indiv_id]->protein_count_;
-                                    internal_organisms_[indiv_id]->protein_count_ =
-                                            internal_organisms_[indiv_id]->protein_count_ + 1;
+                                    int glob_prot_idx = indiv->protein_count_;
+                                    indiv->protein_count_ =
+                                            indiv->protein_count_ + 1;
 
-                                    internal_organisms_[indiv_id]->
+                                    indiv->
                                                 proteins[glob_prot_idx] = new Protein(
-                                            internal_organisms_[indiv_id]->
+                                            indiv->
                                                         rnas[rna_idx]->start_prot[protein_idx], t_k,
                                                 prot_length,
-                                            internal_organisms_[indiv_id]->rnas[rna_idx]->e
+                                            indiv->rnas[rna_idx]->e
                                         );
 
 
-                                    internal_organisms_[indiv_id]->
+                                    indiv->
                                             rnas[rna_idx]->is_coding_ = true;
                                 }
                                 break;
@@ -928,8 +927,8 @@ void ExpManager::compute_protein(int indiv_id) {
 
                             start_protein_pos += 3;
                             start_protein_pos =
-                                    start_protein_pos >= internal_organisms_[indiv_id]->length() ?
-                                    start_protein_pos - internal_organisms_[indiv_id]->length()
+                                    start_protein_pos >= indiv->length() ?
+                                    start_protein_pos - indiv->length()
                                                                             : start_protein_pos;
                         j += 3;
                     }
@@ -944,22 +943,21 @@ void ExpManager::compute_protein(int indiv_id) {
  * @param indiv_id : Unique identification number of the organism
  * @param w_max : Maximum width of the triangle generated by a Protein
  */
-void ExpManager::translate_protein(int indiv_id, double w_max) {
-    for (int protein_idx = 0; protein_idx <
-                              (int) internal_organisms_[indiv_id]->protein_count_; protein_idx++) {
+void ExpManager::translate_protein(std::shared_ptr<Organism> indiv, double w_max) {
+    for (int protein_idx = 0; protein_idx < (int) indiv->protein_count_; protein_idx++) {
         {
-            if (internal_organisms_[indiv_id]->proteins[protein_idx]->is_init_) {
-                int c_pos = internal_organisms_[indiv_id]->proteins[protein_idx]->protein_start, t_pos;
-                int end_pos = internal_organisms_[indiv_id]->proteins[protein_idx]->protein_end;
+            if (indiv->proteins[protein_idx]->is_init_) {
+                int c_pos = indiv->proteins[protein_idx]->protein_start, t_pos;
+                int end_pos = indiv->proteins[protein_idx]->protein_end;
 
                 c_pos += 13;
                 end_pos -= 3;
 
                 c_pos =
-                        c_pos >= internal_organisms_[indiv_id]->length() ? c_pos -
-                                                                           internal_organisms_[indiv_id]->length()
+                        c_pos >= indiv->length() ? c_pos -
+                                                                           indiv->length()
                                                                          : c_pos;
-                end_pos = end_pos < 0 ? internal_organisms_[indiv_id]->length() + end_pos : end_pos;
+                end_pos = end_pos < 0 ? indiv->length() + end_pos : end_pos;
 
 
                 int value = 0;
@@ -969,18 +967,18 @@ void ExpManager::translate_protein(int indiv_id, double w_max) {
 
                 //printf("Codon list : ");
                 while (count_loop <
-                       internal_organisms_[indiv_id]->proteins[protein_idx]->protein_length /
+                       indiv->proteins[protein_idx]->protein_length /
                        3 &&
                        codon_idx < 64) {
-                    codon_list[codon_idx] = internal_organisms_[indiv_id]->dna_->codon_at(c_pos);
+                    codon_list[codon_idx] = indiv->dna_->codon_at(c_pos);
                     //printf("%d ",codon_list[codon_idx]);
                     codon_idx++;
 
                     count_loop++;
                     c_pos += 3;
                     c_pos =
-                            c_pos >= internal_organisms_[indiv_id]->length() ?
-                            c_pos - internal_organisms_[indiv_id]->length()
+                            c_pos >= indiv->length() ?
+                            c_pos - indiv->length()
                                                                              : c_pos;
                 }
                 //printf("\n");
@@ -1101,17 +1099,17 @@ void ExpManager::translate_protein(int indiv_id, double w_max) {
                     }
                 }
 
-                internal_organisms_[indiv_id]->proteins[protein_idx]->protein_length = codon_idx;
+                indiv->proteins[protein_idx]->protein_length = codon_idx;
 
 
                 //  ----------------------------------------------------------------------------------
                 //  2) Normalize M, W and H values in [0;1] according to number of codons of each kind
                 //  ----------------------------------------------------------------------------------
-                internal_organisms_[indiv_id]->proteins[protein_idx]->m =
+                indiv->proteins[protein_idx]->m =
                         nb_m != 0 ? M / (pow(2, nb_m) - 1) : 0.5;
-                internal_organisms_[indiv_id]->proteins[protein_idx]->w =
+                indiv->proteins[protein_idx]->w =
                         nb_w != 0 ? W / (pow(2, nb_w) - 1) : 0.0;
-                internal_organisms_[indiv_id]->proteins[protein_idx]->h =
+                indiv->proteins[protein_idx]->h =
                         nb_h != 0 ? H / (pow(2, nb_h) - 1) : 0.5;
 
                 //  ------------------------------------------------------------------------------------
@@ -1120,27 +1118,27 @@ void ExpManager::translate_protein(int indiv_id, double w_max) {
                 // x_min <= M <= x_max
                 // w_min <= W <= w_max
                 // h_min <= H <= h_max
-                internal_organisms_[indiv_id]->proteins[protein_idx]->m =
+                indiv->proteins[protein_idx]->m =
                         (X_MAX - X_MIN) *
-                        internal_organisms_[indiv_id]->proteins[protein_idx]->m +
+                        indiv->proteins[protein_idx]->m +
                         X_MIN;
-                internal_organisms_[indiv_id]->proteins[protein_idx]->w =
+                indiv->proteins[protein_idx]->w =
                         (w_max - W_MIN) *
-                        internal_organisms_[indiv_id]->proteins[protein_idx]->w +
+                        indiv->proteins[protein_idx]->w +
                         W_MIN;
-                internal_organisms_[indiv_id]->proteins[protein_idx]->h =
+                indiv->proteins[protein_idx]->h =
                         (H_MAX - H_MIN) *
-                        internal_organisms_[indiv_id]->proteins[protein_idx]->h +
+                        indiv->proteins[protein_idx]->h +
                         H_MIN;
 
                 if (nb_m == 0 || nb_w == 0 || nb_h == 0 ||
-                    internal_organisms_[indiv_id]->proteins[protein_idx]->w ==
+                    indiv->proteins[protein_idx]->w ==
                     0.0 ||
-                    internal_organisms_[indiv_id]->proteins[protein_idx]->h ==
+                    indiv->proteins[protein_idx]->h ==
                     0.0) {
-                    internal_organisms_[indiv_id]->proteins[protein_idx]->is_functional = false;
+                    indiv->proteins[protein_idx]->is_functional = false;
                 } else {
-                    internal_organisms_[indiv_id]->proteins[protein_idx]->is_functional = true;
+                    indiv->proteins[protein_idx]->is_functional = true;
                 }
             }
         }
@@ -1150,14 +1148,14 @@ void ExpManager::translate_protein(int indiv_id, double w_max) {
     std::map<int, Protein *> lookup;
 
     for (int protein_idx = 0; protein_idx <
-                              (int) internal_organisms_[indiv_id]->protein_count_; protein_idx++) {
+                              (int) indiv->protein_count_; protein_idx++) {
 
-        if (internal_organisms_[indiv_id]->proteins[protein_idx]->is_init_) {
-            if (lookup.find(internal_organisms_[indiv_id]->proteins[protein_idx]->protein_start) == lookup.end()) {
-                lookup[internal_organisms_[indiv_id]->proteins[protein_idx]->protein_start] = internal_organisms_[indiv_id]->proteins[protein_idx];
+        if (indiv->proteins[protein_idx]->is_init_) {
+            if (lookup.find(indiv->proteins[protein_idx]->protein_start) == lookup.end()) {
+                lookup[indiv->proteins[protein_idx]->protein_start] = indiv->proteins[protein_idx];
             } else {
-                lookup[internal_organisms_[indiv_id]->proteins[protein_idx]->protein_start]->e += internal_organisms_[indiv_id]->proteins[protein_idx]->e;
-                internal_organisms_[indiv_id]->proteins[protein_idx]->is_init_ = false;
+                lookup[indiv->proteins[protein_idx]->protein_start]->e += indiv->proteins[protein_idx]->e;
+                indiv->proteins[protein_idx]->is_init_ = false;
             }
         }
 
@@ -1169,7 +1167,7 @@ void ExpManager::translate_protein(int indiv_id, double w_max) {
  *
  * @param indiv_id : Unique identification number of the organism
  */
-void ExpManager::compute_phenotype(int indiv_id) {
+void ExpManager::compute_phenotype(std::shared_ptr<Organism> indiv) {
 
     double activ_phenotype[300];
     double inhib_phenotype[300];
@@ -1181,24 +1179,24 @@ void ExpManager::compute_phenotype(int indiv_id) {
     }
 
     for (int protein_idx = 0; protein_idx <
-                              (int) internal_organisms_[indiv_id]->protein_count_; protein_idx++) {
-        if (internal_organisms_[indiv_id]->proteins[protein_idx]->is_init_) {
+                              (int) indiv->protein_count_; protein_idx++) {
+        if (indiv->proteins[protein_idx]->is_init_) {
             if (fabs(
-                    internal_organisms_[indiv_id]->proteins[protein_idx]->w) >=
+                    indiv->proteins[protein_idx]->w) >=
                 1e-15 &&
                 fabs(
-                        internal_organisms_[indiv_id]->proteins[protein_idx]->h) >=
+                        indiv->proteins[protein_idx]->h) >=
                 1e-15) {
 
-                if (internal_organisms_[indiv_id]->proteins[protein_idx]->is_functional) {
+                if (indiv->proteins[protein_idx]->is_functional) {
                     // Compute triangle points' coordinates
                     double x0 =
-                            internal_organisms_[indiv_id]->proteins[protein_idx]->m -
-                            internal_organisms_[indiv_id]->proteins[protein_idx]->w;
-                    double x1 = internal_organisms_[indiv_id]->proteins[protein_idx]->m;
+                            indiv->proteins[protein_idx]->m -
+                            indiv->proteins[protein_idx]->w;
+                    double x1 = indiv->proteins[protein_idx]->m;
                     double x2 =
-                            internal_organisms_[indiv_id]->proteins[protein_idx]->m +
-                            internal_organisms_[indiv_id]->proteins[protein_idx]->w;
+                            indiv->proteins[protein_idx]->m +
+                            indiv->proteins[protein_idx]->w;
 
                     int ix0 = (int) (x0 * 300);
                     int ix1 = (int) (x1 * 300);
@@ -1210,14 +1208,14 @@ void ExpManager::compute_phenotype(int indiv_id) {
 
                     // Compute the first equation of the triangle
                     double incY =
-                            (internal_organisms_[indiv_id]->proteins[protein_idx]->h *
-                             internal_organisms_[indiv_id]->proteins[protein_idx]->e) /
+                            (indiv->proteins[protein_idx]->h *
+                             indiv->proteins[protein_idx]->e) /
                             (ix1 - ix0);
                     int count = 1;
 
                     // Updating value between x0 and x1
                     for (int i = ix0 + 1; i < ix1; i++) {
-                        if (internal_organisms_[indiv_id]->proteins[protein_idx]->h > 0)
+                        if (indiv->proteins[protein_idx]->h > 0)
                             activ_phenotype[i] += (incY * (count++));
                         else
                             inhib_phenotype[i] += (incY * (count++));
@@ -1225,34 +1223,34 @@ void ExpManager::compute_phenotype(int indiv_id) {
                     }
 
 
-                    if (internal_organisms_[indiv_id]->proteins[protein_idx]->h > 0)
+                    if (indiv->proteins[protein_idx]->h > 0)
                         activ_phenotype[ix1] +=
-                                (internal_organisms_[indiv_id]->proteins[protein_idx]->h *
-                                 internal_organisms_[indiv_id]->proteins[protein_idx]->e);
+                                (indiv->proteins[protein_idx]->h *
+                                 indiv->proteins[protein_idx]->e);
                     else
                         inhib_phenotype[ix1] +=
-                                (internal_organisms_[indiv_id]->proteins[protein_idx]->h *
-                                 internal_organisms_[indiv_id]->proteins[protein_idx]->e);
+                                (indiv->proteins[protein_idx]->h *
+                                 indiv->proteins[protein_idx]->e);
 
 
                     // Compute the second equation of the triangle
                     incY =
-                            (internal_organisms_[indiv_id]->proteins[protein_idx]->h *
-                             internal_organisms_[indiv_id]->proteins[protein_idx]->e) /
+                            (indiv->proteins[protein_idx]->h *
+                             indiv->proteins[protein_idx]->e) /
                             (ix2 - ix1);
                     count = 1;
 
                     // Updating value between x1 and x2
                     for (int i = ix1 + 1; i < ix2; i++) {
-                        if (internal_organisms_[indiv_id]->proteins[protein_idx]->h > 0)
+                        if (indiv->proteins[protein_idx]->h > 0)
                             activ_phenotype[i] +=
-                                    ((internal_organisms_[indiv_id]->proteins[protein_idx]->h *
-                                      internal_organisms_[indiv_id]->proteins[protein_idx]->e) -
+                                    ((indiv->proteins[protein_idx]->h *
+                                      indiv->proteins[protein_idx]->e) -
                                      (incY * (count++)));
                         else
                             inhib_phenotype[i] +=
-                                    ((internal_organisms_[indiv_id]->proteins[protein_idx]->h *
-                                      internal_organisms_[indiv_id]->proteins[protein_idx]->e) -
+                                    ((indiv->proteins[protein_idx]->h *
+                                      indiv->proteins[protein_idx]->e) -
                                      (incY * (count++)));
                     }
 
@@ -1272,9 +1270,9 @@ void ExpManager::compute_phenotype(int indiv_id) {
     }
 
     for (int fuzzy_idx = 0; fuzzy_idx < 300; fuzzy_idx++) {
-        internal_organisms_[indiv_id]->phenotype[fuzzy_idx] = activ_phenotype[fuzzy_idx] + inhib_phenotype[fuzzy_idx];
-        if (internal_organisms_[indiv_id]->phenotype[fuzzy_idx] < 0)
-            internal_organisms_[indiv_id]->phenotype[fuzzy_idx] = 0;
+        indiv->phenotype[fuzzy_idx] = activ_phenotype[fuzzy_idx] + inhib_phenotype[fuzzy_idx];
+        if (indiv->phenotype[fuzzy_idx] < 0)
+            indiv->phenotype[fuzzy_idx] = 0;
     }
 }
 
@@ -1284,31 +1282,31 @@ void ExpManager::compute_phenotype(int indiv_id) {
  * @param indiv_id : Unique identification number of the organism
  * @param selection_pressure : Selection pressure used during the selection process
  */
-void ExpManager::compute_fitness(int indiv_id, double selection_pressure) {
+void ExpManager::compute_fitness(std::shared_ptr<Organism> indiv, double selection_pressure) {
     for (int fuzzy_idx = 0; fuzzy_idx < 300; fuzzy_idx++) {
 
-        if (internal_organisms_[indiv_id]->phenotype[fuzzy_idx] > 1)
-            internal_organisms_[indiv_id]->phenotype[fuzzy_idx] = 1;
-        if (internal_organisms_[indiv_id]->phenotype[fuzzy_idx] < 0)
-            internal_organisms_[indiv_id]->phenotype[fuzzy_idx] = 0;
+        if (indiv->phenotype[fuzzy_idx] > 1)
+            indiv->phenotype[fuzzy_idx] = 1;
+        if (indiv->phenotype[fuzzy_idx] < 0)
+            indiv->phenotype[fuzzy_idx] = 0;
 
-        internal_organisms_[indiv_id]->delta[fuzzy_idx] =
-                internal_organisms_[indiv_id]->phenotype[fuzzy_idx] -
+        indiv->delta[fuzzy_idx] =
+                indiv->phenotype[fuzzy_idx] -
                 target[fuzzy_idx];
     }
 
-    internal_organisms_[indiv_id]->metaerror = 0;
+    indiv->metaerror = 0;
 
     for (int fuzzy_idx = 0; fuzzy_idx < 299; fuzzy_idx++) {
-        internal_organisms_[indiv_id]->metaerror +=
-                ((std::fabs(internal_organisms_[indiv_id]->delta[fuzzy_idx]) +
-                  std::fabs(internal_organisms_[indiv_id]->delta[fuzzy_idx + 1])) /
+        indiv->metaerror +=
+                ((std::fabs(indiv->delta[fuzzy_idx]) +
+                  std::fabs(indiv->delta[fuzzy_idx + 1])) /
                  (600.0));
     }
 
-    internal_organisms_[indiv_id]->fitness = exp(
+    indiv->fitness = exp(
             -selection_pressure *
-            ((double) internal_organisms_[indiv_id]->metaerror));
+            ((double) indiv->metaerror));
 }
 
 /**
@@ -1375,6 +1373,7 @@ void ExpManager::selection(int indiv_id) {
  * @param nb_gen : Number of generations to simulate
  */
 void ExpManager::run_evolution(int nb_gen) {
+    #pragma omp parallel for
     for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
         auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
 
@@ -1389,14 +1388,14 @@ void ExpManager::run_evolution(int nb_gen) {
 
         opt_prom_compute_RNA(indiv_id);
 
-        start_protein(indiv_id);
-        compute_protein(indiv_id);
+        start_protein(internal_organisms_[indiv_id]);
+        compute_protein(internal_organisms_[indiv_id]);
 
-        translate_protein(indiv_id, w_max_);
+        translate_protein(internal_organisms_[indiv_id], w_max_);
 
-        compute_phenotype(indiv_id);
+        compute_phenotype(internal_organisms_[indiv_id]);
 
-        compute_fitness(indiv_id, selection_pressure_);
+        compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
     }
     
     printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);
@@ -1442,14 +1441,14 @@ void ExpManager::run_evolution_on_gpu(int nb_gen) {
 
         opt_prom_compute_RNA(indiv_id);
 
-        start_protein(indiv_id);
-        compute_protein(indiv_id);
+        start_protein(internal_organisms_[indiv_id]);
+        compute_protein(internal_organisms_[indiv_id]);
 
-        translate_protein(indiv_id, w_max_);
+        translate_protein(internal_organisms_[indiv_id], w_max_);
 
-        compute_phenotype(indiv_id);
+        compute_phenotype(internal_organisms_[indiv_id]);
 
-        compute_fitness(indiv_id, selection_pressure_);
+        compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
     }
 
   printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);

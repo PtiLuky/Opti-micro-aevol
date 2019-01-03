@@ -90,18 +90,18 @@ class ExpManager {
         void do_mutation(int indiv_id);
         void selection(int indiv_id);
 
-        void start_stop_RNA(int indiv_id);
-        void compute_RNA(int indiv_id);
+        void start_stop_RNA(std::shared_ptr<Organism> indiv);
+        void compute_RNA(std::shared_ptr<Organism> indiv);
 
         void opt_prom_compute_RNA(int indiv_id);
 
-        void start_protein(int indiv_id);
-        void compute_protein(int indiv_id);
+        void start_protein(std::shared_ptr<Organism> indiv);
+        void compute_protein(std::shared_ptr<Organism> indiv);
 
-        void translate_protein(int indiv_id, double w_max);
+        void translate_protein(std::shared_ptr<Organism> indiv, double w_max);
 
-        void compute_phenotype(int indiv_id);
-        void compute_fitness(int indiv_id, double selection_pressure);
+        void compute_phenotype(std::shared_ptr<Organism> indiv);
+        void compute_fitness(std::shared_ptr<Organism> indiv, double selection_pressure);
 
         std::shared_ptr<Organism>* internal_organisms_;
         std::shared_ptr<Organism>* prev_internal_organisms_;
