@@ -63,6 +63,7 @@ private:
 				parent_ = other.parent_;
 				other.parent_ = nullptr;
 				state_ = other.state_;
+    			return *this;
 			}
 
 			~Gen() {

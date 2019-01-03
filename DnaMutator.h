@@ -76,7 +76,7 @@ class DnaMutator {
 
     bool hasMutate() {return hasMutate_;}
 
-    bool setMutate(bool mutate) {hasMutate_ = mutate;}
+    void setMutate(bool mutate) {hasMutate_ = mutate;}
 
   std::vector<TypeMutation> generate_mutation_array(int length, int* new_length);
 

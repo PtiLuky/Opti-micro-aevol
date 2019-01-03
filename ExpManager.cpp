@@ -61,16 +61,17 @@ using namespace std;
  */
 ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutation_rate, int init_length_dna,
                        double w_max, int selection_pressure, int backup_step)
-    : rng_(new Threefry(grid_width, grid_height, seed))
+    : nb_indivs_(grid_height * grid_width)
+    , rng_(new Threefry(grid_width, grid_height, seed))
+    , selection_pressure_(selection_pressure)
     , grid_height_(grid_height)
     , grid_width_(grid_width)
-    , backup_step_(backup_step)
-    , nb_indivs_(grid_height * grid_width)
-
-    , w_max_(w_max)
-    , selection_pressure_(selection_pressure)
 
     , mutation_rate_(mutation_rate)
+
+    , w_max_(w_max)
+    , backup_step_(backup_step)
+
 {
     internal_organisms_ = new std::shared_ptr<Organism>[nb_indivs_];
     prev_internal_organisms_ = new std::shared_ptr<Organism>[nb_indivs_];
