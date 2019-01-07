@@ -43,6 +43,7 @@ using namespace std;
 #include "Protein.h"
 #include "Organism.h"
 #include "Gaussian.h"
+#include "Algorithms.h"
 
 #include <utility>
 
@@ -429,8 +430,8 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
 			internal_organisms_[indiv_id] = nullptr;
 		}
 	}
-
-    // Search for the best
+	
+	// Search for the best
     double best_fitness = prev_internal_organisms_[0]->fitness;
     int idx_best = 0;
     for (int indiv_id = 1; indiv_id < nb_indivs_; indiv_id++) {
@@ -485,7 +486,6 @@ void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_
     stats_best->write_best();
     stats_mean->write_average();
 }
-
 
 /**
  * Search for Promoters and Terminators (i.e. beginning and ending of a RNA) within the whole DNA of an Organism
@@ -1347,36 +1347,35 @@ void ExpManager::run_evolution(int nb_gen) {
     }
 }
 
-
 void ExpManager::run_evolution_on_gpu(int nb_gen) {
-  high_resolution_clock::time_point t1 = high_resolution_clock::now();
   cout << "Transfer" << endl;
-  //transfer_in(this, true);
+  high_resolution_clock::time_point t1 = high_resolution_clock::now();
+  transfer_in(this, true);
   high_resolution_clock::time_point t2 = high_resolution_clock::now();
   auto duration_transfer_in = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
   cout << "Transfer done in " << duration_transfer_in << endl;
 
-    for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
-        auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
-
-        delete dna_mutator_array_[indiv_id];
-        dna_mutator_array_[indiv_id] = new DnaMutator(
-                &rng,
-                prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
-                mutation_rate_, indiv_id);
-        dna_mutator_array_[indiv_id]->setMutate(true);
-
-        opt_prom_compute_RNA(indiv_id);
-
-        start_protein(internal_organisms_[indiv_id]);
-        compute_protein(internal_organisms_[indiv_id]);
-
-        translate_protein(internal_organisms_[indiv_id], w_max_);
-
-        compute_phenotype(internal_organisms_[indiv_id]);
-
-        compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
-    }
+	for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
+		auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
+	
+		delete dna_mutator_array_[indiv_id];
+		dna_mutator_array_[indiv_id] = new DnaMutator(
+				&rng,
+				prev_internal_organisms_[0]->length(),
+				mutation_rate_, indiv_id);
+		dna_mutator_array_[indiv_id]->setMutate(true);
+	
+		opt_prom_compute_RNA(indiv_id);
+	
+		start_protein(internal_organisms_[indiv_id]);
+		compute_protein(internal_organisms_[indiv_id]);
+	
+		translate_protein(internal_organisms_[indiv_id], w_max_);
+	
+		compute_phenotype(internal_organisms_[indiv_id]);
+	
+		compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
+	}
 
   printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);
   bool firstGen = true;
@@ -1384,9 +1383,9 @@ void ExpManager::run_evolution_on_gpu(int nb_gen) {
     AeTime::plusplus();
 
       high_resolution_clock::time_point t1 = high_resolution_clock::now();
-      //run_a_step_on_GPU(nb_indivs_, w_max_, selection_pressure_, grid_width_, grid_height_,mutation_rate_);
-
+      run_a_step_on_GPU(nb_indivs_, w_max_, selection_pressure_, grid_width_, grid_height_,mutation_rate_);
       t2 = high_resolution_clock::now();
+      
       auto duration_transfer_in = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
       std::cout<<"LOG,"<<duration_transfer_in<<std::endl;

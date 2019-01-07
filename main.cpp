@@ -187,7 +187,7 @@ int main(int argc, char* argv[]) {
         exp_manager = new ExpManager(resume);
     }
 
-    exp_manager->run_evolution(nbstep);
+    exp_manager->run_evolution_on_gpu(nbstep);
 
     std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
     auto duration_gpu_start_stop_rna = std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();

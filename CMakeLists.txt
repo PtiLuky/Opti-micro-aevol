@@ -15,11 +15,11 @@ add_subdirectory(SFMT-src-1.4)
 
 add_definitions(-DSFMT_MEXP=607)
 
-#find_package(CUDA REQUIRED)
-#enable_language(CUDA)
-#set(CUDA_NVCC_FLAGS "-std=c++11 -arch=compute_60 -lineinfo")
+find_package(CUDA REQUIRED)
+enable_language(CUDA)
+set(CUDA_NVCC_FLAGS "-std=c++11 -arch=compute_60 -lineinfo")
 
-#cuda_compile(cuda_aevol Algorithms.cu ThreefryGPU.cu)
+cuda_compile(cuda_aevol Algorithms.cu ThreefryGPU.cu)
 
 add_library(mini_aevol_gpu ExpManager.cpp ExpManager.h AeTime.cpp AeTime.h JumpingMT.cpp JumpingMT.h DnaMutator.cpp DnaMutator.h MutationEvent.cpp MutationEvent.cpp Organism.cpp Organism.h Promoter.h RNA.h Protein.h Stats.cpp Stats.h Gaussian.h Threefry.cpp Dna.cpp main.cpp)
 target_include_directories(mini_aevol_gpu INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -39,10 +39,11 @@ if (OPENMP_FOUND)
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
-add_executable(pdc_mini_aevol main.cpp )
-#cuda_add_executable(pdc_mini_aevol_gpu main.cpp ${cuda_aevol})
+#add_executable(pdc_mini_aevol main.cpp )
+cuda_add_executable(pdc_mini_aevol_gpu main.cpp ${cuda_aevol})
 # nvToolsExt for enhanced profiling (ad-hoc chunks)
-target_link_libraries(pdc_mini_aevol sfmt ${ZLIB_LIBRARIES} mini_aevol_gpu)
+#target_link_libraries(pdc_mini_aevol sfmt ${ZLIB_LIBRARIES} mini_aevol_gpu)
+target_link_libraries(pdc_mini_aevol_gpu sfmt ${ZLIB_LIBRARIES} mini_aevol_gpu)
 
 #target_link_libraries(pdc_mini_aevol_gpu PUBLIC mini_aevol_gpu)
 

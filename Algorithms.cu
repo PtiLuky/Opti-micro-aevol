@@ -209,7 +209,7 @@ __device__ static int mod(int a, int b)
  * @param mutation_rate
  */
 void run_a_step_on_GPU(int nb_indiv, double w_max, double selection_pressure, int grid_width, int grid_height, double mutation_rate) {
-
+	std::cout<<"Run a step on GPU."<<std::endl;
 }
 
 /**
