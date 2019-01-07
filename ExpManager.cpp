@@ -408,23 +408,26 @@ ExpManager::~ExpManager() {
  */
 void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_gen) {
     // Running the simulation process for each organism
-    #pragma omp parallel for
-	for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
-		selection(indiv_id);
-		do_mutation(indiv_id);
-		opt_prom_compute_RNA(indiv_id);
-		if (dna_mutator_array_[indiv_id]->hasMutate()) {
-			start_protein(internal_organisms_[indiv_id]);
-			compute_protein(internal_organisms_[indiv_id]);
-			translate_protein(internal_organisms_[indiv_id], w_max);
-			compute_phenotype(internal_organisms_[indiv_id]);
-			compute_fitness(internal_organisms_[indiv_id], selection_pressure);
+	#pragma omp parallel
+	{
+		#pragma omp for
+		for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
+			selection(indiv_id);
+			do_mutation(indiv_id);
+			opt_prom_compute_RNA(indiv_id);
+			if (dna_mutator_array_[indiv_id]->hasMutate()) {
+				start_protein(internal_organisms_[indiv_id]);
+				compute_protein(internal_organisms_[indiv_id]);
+				translate_protein(internal_organisms_[indiv_id], w_max);
+				compute_phenotype(internal_organisms_[indiv_id]);
+				compute_fitness(internal_organisms_[indiv_id], selection_pressure);
+			}
 		}
-    }
-    #pragma omp parallel for
-	for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
-		prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id];
-		internal_organisms_[indiv_id] = nullptr;
+		#pragma omp for
+		for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
+			prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id];
+			internal_organisms_[indiv_id] = nullptr;
+		}
 	}
 
     // Search for the best
