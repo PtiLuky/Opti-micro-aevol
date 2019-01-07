@@ -5,3 +5,4 @@ CMakeFiles/
 *.a
 *.cmake
 pdc_mini_aevol
+pdc_mini_aevol_gpu
