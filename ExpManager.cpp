@@ -23,8 +23,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 // ***************************************************************************************************************
-#define NBTHREADS 8
-#define NBTHREADSMAX 16
 
 #include <cmath>
 #include <map>
@@ -122,7 +120,7 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     // Generate a random organism that is better than nothing
     bool found_good_random = false;
     // NO ! DO NOT make it parallel like that : we lose repetability !! (random generation)
-    //#pragma omp parallel num_threads(NBTHREADS)
+    //#pragma omp parallel num_threads(8)
     while(1) {
         bool local_found;
         //#pragma omp atomic read
@@ -409,30 +407,25 @@ ExpManager::~ExpManager() {
  * @param first_gen : is it the first generation simulated ? (generation 1 or first generation after a restore)
  */
 void ExpManager::run_a_step(double w_max, double selection_pressure, bool first_gen) {
-
     // Running the simulation process for each organism
     #pragma omp parallel for
-    for(int i = 0; i < NBTHREADSMAX; i++){
-        for(int indiv_id = i; indiv_id < nb_indivs_; indiv_id+= NBTHREADSMAX){
-            selection(indiv_id);
-            do_mutation(indiv_id);
-            opt_prom_compute_RNA(indiv_id);
-            if (dna_mutator_array_[indiv_id]->hasMutate()) {
-                start_protein(internal_organisms_[indiv_id]);
-                compute_protein(internal_organisms_[indiv_id]);
-                translate_protein(internal_organisms_[indiv_id], w_max);
-                compute_phenotype(internal_organisms_[indiv_id]);
-                compute_fitness(internal_organisms_[indiv_id], selection_pressure);
-            }
-        }
+	for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
+		selection(indiv_id);
+		do_mutation(indiv_id);
+		opt_prom_compute_RNA(indiv_id);
+		if (dna_mutator_array_[indiv_id]->hasMutate()) {
+			start_protein(internal_organisms_[indiv_id]);
+			compute_protein(internal_organisms_[indiv_id]);
+			translate_protein(internal_organisms_[indiv_id], w_max);
+			compute_phenotype(internal_organisms_[indiv_id]);
+			compute_fitness(internal_organisms_[indiv_id], selection_pressure);
+		}
     }
     #pragma omp parallel for
-    for(int i = 0; i < NBTHREADSMAX; i++){
-        for(int indiv_id = i+1; indiv_id < nb_indivs_; indiv_id+= NBTHREADSMAX){
-            prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id];
-            internal_organisms_[indiv_id] = nullptr;
-        }
-    }
+	for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
+		prev_internal_organisms_[indiv_id] = internal_organisms_[indiv_id];
+		internal_organisms_[indiv_id] = nullptr;
+	}
 
     // Search for the best
     double best_fitness = prev_internal_organisms_[0]->fitness;
@@ -1305,31 +1298,29 @@ void ExpManager::selection(int indiv_id) {
  */
 void ExpManager::run_evolution(int nb_gen) {
     #pragma omp parallel for
-    for(int i = 0; i < NBTHREADSMAX; i++){
-        for(int indiv_id = i; indiv_id < nb_indivs_; indiv_id+= NBTHREADSMAX){
-            auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
+	for(int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++){
+		auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
 
-            delete dna_mutator_array_[indiv_id];
-            dna_mutator_array_[indiv_id] = new DnaMutator(
-                    &rng,
-                    // here next_generation_reproducer_ is not set...
-                    //prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
-                    prev_internal_organisms_[0]->length(),
-                    mutation_rate_, indiv_id);
-            dna_mutator_array_[indiv_id]->setMutate(true);
+		delete dna_mutator_array_[indiv_id];
+		dna_mutator_array_[indiv_id] = new DnaMutator(
+				&rng,
+				// here next_generation_reproducer_ is not set...
+				//prev_internal_organisms_[next_generation_reproducer_[indiv_id]]->length(),
+				prev_internal_organisms_[0]->length(),
+				mutation_rate_, indiv_id);
+		dna_mutator_array_[indiv_id]->setMutate(true);
 
-            opt_prom_compute_RNA(indiv_id);
+		opt_prom_compute_RNA(indiv_id);
 
-            start_protein(internal_organisms_[indiv_id]);
-            compute_protein(internal_organisms_[indiv_id]);
+		start_protein(internal_organisms_[indiv_id]);
+		compute_protein(internal_organisms_[indiv_id]);
 
-            translate_protein(internal_organisms_[indiv_id], w_max_);
+		translate_protein(internal_organisms_[indiv_id], w_max_);
 
-            compute_phenotype(internal_organisms_[indiv_id]);
+		compute_phenotype(internal_organisms_[indiv_id]);
 
-            compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
-        }
-    }
+		compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
+	}
     
     printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);
     bool firstGen = true;
