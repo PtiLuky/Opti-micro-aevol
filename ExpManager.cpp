@@ -152,7 +152,6 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
                     found_good_random = true;
                     r_best = r_compare;
                     i_best = i;
-                    std::cout<<i<<" : " <<r_compare <<" vs "<< geometric_area_ <<std::endl;
                 }
             }
 		}
