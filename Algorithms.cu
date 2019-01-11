@@ -34,6 +34,7 @@ cudaError_t checkCuda(cudaError_t result)
 
 
 constexpr int32_t PROMOTER_ARRAY_SIZE = 10000;
+uint32_t* sequences;
 
 /**
  * Function to transfer data from CPU to GPU
@@ -46,10 +47,18 @@ void transfer_in(ExpManager* exp_m, bool first_gen) {
     checkCuda(cudaMalloc((void**) &gpu_counters,
                          exp_m->rng_->counters().size() *
                          sizeof(unsigned long long)));
-
     checkCuda(cudaMemcpy(gpu_counters, exp_m->rng_->counters().data(),
                          exp_m->rng_->counters().size() *
                          sizeof(unsigned long long), cudaMemcpyHostToDevice));
+    
+    checkCuda(cudaMalloc((void**) &sequences,
+                        exp_m->nb_indivs_ * 
+                        exp_m->internal_organisms_[0]->dna_->seq_.size));
+                        
+    for(int i = 0; i < exp_m->nb_indivs_; ++i)
+        checkCuda(cudaMemcpy(&sequences[i], exp_m->internal_organisms_[i]->dna_->seq_.seq,
+                            exp_m->internal_organisms_[0]->dna_->seq_.size, 
+                            cudaMemcpyHostToDevice));
 
     // TO COMPLETE
 }

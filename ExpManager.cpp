@@ -1350,12 +1350,12 @@ void ExpManager::run_evolution(int nb_gen) {
 }
 
 void ExpManager::run_evolution_on_gpu(int nb_gen) {
-  cout << "Transfer" << endl;
-  high_resolution_clock::time_point t1 = high_resolution_clock::now();
-  transfer_in(this, true);
-  high_resolution_clock::time_point t2 = high_resolution_clock::now();
-  auto duration_transfer_in = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
-  cout << "Transfer done in " << duration_transfer_in << endl;
+    cout << "Transfer" << endl;
+        high_resolution_clock::time_point t1 = high_resolution_clock::now();
+        transfer_in(this, true);
+        high_resolution_clock::time_point t2 = high_resolution_clock::now();
+        auto duration_transfer_in = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
+    cout << "Transfer done in " << duration_transfer_in << " us" << endl;
 
 	for (int indiv_id = 0; indiv_id < nb_indivs_; indiv_id++) {
 		auto rng = std::move(rng_->gen(indiv_id, Threefry::MUTATION));
@@ -1379,24 +1379,26 @@ void ExpManager::run_evolution_on_gpu(int nb_gen) {
 		compute_fitness(internal_organisms_[indiv_id], selection_pressure_);
 	}
 
-  printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);
-  bool firstGen = true;
-  for (int gen = 0; gen < nb_gen+1; gen++) {
-    AeTime::plusplus();
+    printf("Running evolution from %d to %d\n",AeTime::time(),AeTime::time()+nb_gen);
+    bool firstGen = true;
+    for (int gen = 0; gen < nb_gen+1; gen++) {
+        AeTime::plusplus();
 
-      high_resolution_clock::time_point t1 = high_resolution_clock::now();
-      run_a_step_on_GPU(nb_indivs_, w_max_, selection_pressure_, grid_width_, grid_height_,mutation_rate_);
-      t2 = high_resolution_clock::now();
-      
-      auto duration_transfer_in = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
+            high_resolution_clock::time_point t1 = high_resolution_clock::now();
+            run_a_step_on_GPU(nb_indivs_, w_max_, selection_pressure_, grid_width_, grid_height_,mutation_rate_);
+            t2 = high_resolution_clock::now();
+        
+            auto duration_transfer_in = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
-      std::cout<<"LOG,"<<duration_transfer_in<<std::endl;
+            #ifndef NOLOG
+            std::cout<<"LOG,"<<duration_transfer_in<<std::endl;
+            #endif
 
-    firstGen = false;
-    printf("Generation %d : \n",AeTime::time());
+        firstGen = false;
+        printf("Generation %d : \n",AeTime::time());
 
-    if (AeTime::time() % backup_step_ == 0) {
-      save(AeTime::time());
+        if (AeTime::time() % backup_step_ == 0) {
+            save(AeTime::time());
+        }
     }
-  }
 }
