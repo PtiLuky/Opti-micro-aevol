@@ -121,6 +121,7 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
     // Generate a random organism that is better than nothing
     bool found_good_random = false;
     double r_best = 0;
+    int i_best = -1;
 
 	while(!found_good_random) {
 		#pragma omp parallel for
@@ -144,18 +145,15 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
 			double r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
 			
 			#pragma omp critical
-			if(r_compare < r_best){
-				//#pragma omp critical
-				internal_organisms_[0] = random_organism;
-				//#pragma omp atomic write
-				found_good_random = true;
-			}
-		}
-		bool local_found;
-		//#pragma omp atomic read
-		local_found = found_good_random;
-		if(local_found){
-			break;
+            {
+                if(r_compare < r_best || (r_compare == r_best && i > i_best)){
+                    internal_organisms_[0] = random_organism;
+                    found_good_random = true;
+                    r_best = r_compare;
+                    i_best = i;
+                    std::cout<<i<<" : " <<r_compare <<" vs "<< geometric_area_ <<std::endl;
+                }
+            }
 		}
 		
 	}
