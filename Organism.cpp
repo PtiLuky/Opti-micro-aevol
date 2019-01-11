@@ -243,6 +243,8 @@ void Organism::apply_mutations() {
                     do_switch(repl->pos_1());
                     nb_swi_++;
                     nb_mut_++;
+                    remove_promoters_around(repl->pos_1());
+                    look_for_new_promoters_around(repl->pos_1());
                     break;
             }
         }

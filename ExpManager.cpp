@@ -23,6 +23,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 // ***************************************************************************************************************
+#define NBTHREADS 16
 
 #include <cmath>
 #include <map>
@@ -120,40 +121,43 @@ ExpManager::ExpManager(int grid_height, int grid_width, int seed, double mutatio
 
     // Generate a random organism that is better than nothing
     bool found_good_random = false;
-    // NO ! DO NOT make it parallel like that : we lose repetability !! (random generation)
-    //#pragma omp parallel num_threads(8)
-    while(1) {
-        bool local_found;
-        //#pragma omp atomic read
-        local_found = found_good_random;
-        if(local_found){
-            break;
-        }
-        auto random_organism = std::make_shared<Organism>(this, init_length_dna, 0);
-        
+    double r_best = 0;
+    int i_best = -1;
 
-        // TODO enqueter, rarement il y a une petite différence avec ce qui est fait par l'ancien programme, comme si 
-        // qqs rares RNA étaient non trouvés
-        start_stop_RNA(random_organism);
-        compute_RNA(random_organism);
+	while(!found_good_random) {
+		#pragma omp parallel for
+		for(int i = 0; i < NBTHREADS; i++){
+			auto random_organism = std::make_shared<Organism>(this, init_length_dna, i);
 
-        start_protein(random_organism);
-        compute_protein(random_organism);
-    
-        translate_protein(random_organism, w_max);
-    
-        compute_phenotype(random_organism);
-    
-        compute_fitness(random_organism, selection_pressure);
-    
-        double r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
-        if(r_compare < 0){
-            //#pragma omp critical
-            internal_organisms_[0] = random_organism;
-            //#pragma omp atomic write
-            found_good_random = true;
-        }
-    }
+			// TODO enqueter, rarement il y a une petite différence avec ce qui est fait par l'ancien programme, comme si 
+			// qqs rares RNA étaient non trouvés
+			start_stop_RNA(random_organism);
+			compute_RNA(random_organism);
+	
+			start_protein(random_organism);
+			compute_protein(random_organism);
+		
+			translate_protein(random_organism, w_max);
+		
+			compute_phenotype(random_organism);
+		
+			compute_fitness(random_organism, selection_pressure);
+		
+			double r_compare = round((random_organism->metaerror-geometric_area_)* 1E10) / 1E10;
+			
+			#pragma omp critical
+            {
+                if(r_compare < r_best || (r_compare == r_best && i > i_best)){
+                    internal_organisms_[0] = random_organism;
+                    found_good_random = true;
+                    r_best = r_compare;
+                    i_best = i;
+                    std::cout<<i<<" : " <<r_compare <<" vs "<< geometric_area_ <<std::endl;
+                }
+            }
+		}
+		
+	}
 
     printf("Populating the environment\n");
 
@@ -371,8 +375,6 @@ void ExpManager::do_mutation(int indiv_id) {
                 next_generation_reproducer_[indiv_id];
 
         internal_organisms_[indiv_id]->apply_mutations();
-        internal_organisms_[indiv_id]->remove_all_promoters();
-        internal_organisms_[indiv_id]->locate_promoters();
     } else {
         int parent_id = next_generation_reproducer_[indiv_id];
 
