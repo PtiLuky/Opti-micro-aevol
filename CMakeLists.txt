@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.8.2)
 project(pdc_mini_aevol)
 
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_COMPILER "gcc-6")
+set(CMAKE_CXX_COMPILER "g++-6")
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
