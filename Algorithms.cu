@@ -32,9 +32,17 @@ cudaError_t checkCuda(cudaError_t result)
     return result;
 }
 
+#define SELECTION_SCOPE_X 3
+#define SELECTION_SCOPE_Y 3
+#define HALF_SCOPE_X 1
+#define HALF_SCOPE_Y 1
+#define NEIGHBORHOOD_SIZE 9
+
 
 constexpr int32_t PROMOTER_ARRAY_SIZE = 10000;
-uint32_t* sequences;
+uint32_t* gpu_sequences;
+uint32_t* gpu_prev_sequences;
+double* gpu_fitness;
 
 /**
  * Function to transfer data from CPU to GPU
@@ -42,27 +50,48 @@ uint32_t* sequences;
  * @param exp_m
  * @param first_gen
  */
-void transfer_in(ExpManager* exp_m, bool first_gen) {
-    exp_m->rng_->initDevice();
-    checkCuda(cudaMalloc((void**) &gpu_counters,
-                         exp_m->rng_->counters().size() *
-                         sizeof(unsigned long long)));
-    checkCuda(cudaMemcpy(gpu_counters, exp_m->rng_->counters().data(),
-                         exp_m->rng_->counters().size() *
-                         sizeof(unsigned long long), cudaMemcpyHostToDevice));
-    
-    checkCuda(cudaMalloc((void**) &sequences,
+ void transfer_in(ExpManager* exp_m, bool first_gen) {
+     exp_m->rng_->initDevice();
+
+     // Malloc
+     checkCuda(cudaMalloc((void**) &gpu_counters,
+                          exp_m->rng_->counters().size() *
+                          sizeof(unsigned long long)));
+    checkCuda(cudaMalloc((void**) &gpu_prev_sequences,
                         exp_m->nb_indivs_ * 
                         exp_m->internal_organisms_[0]->dna_->seq_.size));
-                        
-    for(int i = 0; i < exp_m->nb_indivs_; ++i)
-        checkCuda(cudaMemcpy(&sequences[i], exp_m->internal_organisms_[i]->dna_->seq_.seq,
+    
+    checkCuda(cudaMalloc((void**) &gpu_sequences, sizeof(gpu_prev_sequences)));
+    
+    checkCuda(cudaMalloc((void**) &gpu_fitness, exp_m->nb_indivs_ * sizeof(double)));
+    
+    // Mem cpy
+    checkCuda(cudaMemcpy(gpu_counters, exp_m->rng_->counters().data(),
+                        exp_m->rng_->counters().size() *
+                        sizeof(unsigned long long), cudaMemcpyHostToDevice));                    
+    for(int i = 0; i < exp_m->nb_indivs_; ++i) {
+        checkCuda(cudaMemcpy(&gpu_prev_sequences[i], exp_m->internal_organisms_[i]->dna_->seq_.seq,
                             exp_m->internal_organisms_[0]->dna_->seq_.size, 
                             cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(&gpu_fitness[i], &(exp_m->internal_organisms_[i]->fitness),
+                            sizeof(double), 
+                            cudaMemcpyHostToDevice));
+        //printf("%f - ", exp_m->internal_organisms_[i]->fitness);
+    }
 
+     // TO COMPLETE
+ }
+
+ void transfer_out(ExpManager* exp_m) {
+     // TODO
+ }
+
+ void clean(ExpManager* exp_m) {
+    checkCuda(cudaFree(gpu_counters));
+    checkCuda(cudaFree(gpu_sequences));
+    checkCuda(cudaFree(gpu_prev_sequences));
     // TO COMPLETE
 }
-
 
 __device__ int32_t Threefry::Device::roulette_random(double* probs, int32_t nb_elts)
 {
@@ -208,25 +237,108 @@ __device__ static int mod(int a, int b)
     return a;
 }
 
+__global__ void selection(unsigned long long* gpu_counters, double* fitness, uint32_t* seqs, uint32_t* next,
+    int nb_indiv, int grid_w, int grid_h, int size_seq){
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int indiv_id = x * grid_h + y;
+
+    if(x < grid_w && y < grid_h){
+        double probs[NEIGHBORHOOD_SIZE];
+        double tot_local_probs = 0;
+        int count = 0;
+        int cur_x;
+        int cur_y;
+        for(int i = - HALF_SCOPE_X; i  < SELECTION_SCOPE_X - HALF_SCOPE_X; ++i){
+            for(int j = - HALF_SCOPE_Y; j < SELECTION_SCOPE_Y - HALF_SCOPE_Y; ++j){
+                cur_x = mod(x+i, grid_w);
+                cur_y = mod(y+j, grid_h);
+    
+                probs[count] = fitness[cur_x * grid_h + cur_y];
+                tot_local_probs +=  probs[count];
+    
+                ++count;
+            }
+        }
+        for(int i = 0 ; i < NEIGHBORHOOD_SIZE ; ++i) {
+            probs[i] = probs[i]/tot_local_probs;
+        }
+    
+        Threefry::Device rng(gpu_counters,indiv_id,Threefry::Phase::REPROD,nb_indiv);
+        int found_org = rng.roulette_random(probs, NEIGHBORHOOD_SIZE);
+    
+        int x_offset = (found_org / SELECTION_SCOPE_X) - HALF_SCOPE_X;
+        int y_offset = (found_org % SELECTION_SCOPE_Y) - HALF_SCOPE_Y;
+        cur_x = mod(x+x_offset, grid_w);
+        cur_y = mod(y+y_offset, grid_h);
+        int next_indiv_id = cur_x * grid_h + cur_y;
+    
+        for(int i = 0 ; i < size_seq ; ++i) {
+            next[indiv_id * size_seq + i] = seqs[next_indiv_id * size_seq + i];
+        }
+    }
+}
+// seq_length is its true length in number of bool
+__global__ void do_mutation(unsigned long long* gpu_counters, uint32_t* seqs,
+    int nb_indiv, int grid_w, int grid_h, int seq_length, int size_seq, 
+    double mutation_rate) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int indiv_id = x * grid_h + y;
+
+    if(x < grid_w && y < grid_h){
+        Threefry::Device rng(gpu_counters,indiv_id,Threefry::Phase::MUTATION,nb_indiv);
+        int nb_mut = rng.binomial_random(seq_length, mutation_rate);
+        if(nb_mut > 0) {
+            int nb_swi = nb_mut;
+    
+            while(nb_mut > 0) {
+                int rand_val = rng.random(nb_mut);
+                if(rand_val < nb_swi){
+                    --nb_swi;
+                    int pos = rng.random(seq_length);
+                    dna_gpu_do_switch(seqs, indiv_id, size_seq, pos);
+                }
+                --nb_mut;
+            }
+        }
+    }
+}
+
 /**
  * Run a step on the GPU
  * @param nb_indiv
+ * @param seq_length number of bool in the seq of one indiv
  * @param w_max
  * @param selection_pressure
  * @param grid_width
  * @param grid_height
  * @param mutation_rate
  */
-void run_a_step_on_GPU(int nb_indiv, double w_max, double selection_pressure, int grid_width, int grid_height, double mutation_rate) {
-	std::cout<<"Run a step on GPU."<<std::endl;
+void run_a_step_on_GPU(int nb_indiv, int size_seq, int seq_length, double w_max, double selection_pressure, int grid_width, int grid_height, double mutation_rate) {
+    dim3 DimGridOrganism(ceil(grid_width/16.),ceil(grid_height/16.),1);
+    dim3 DimBlockOrganism(16,16,1);
+
+    selection<<<DimGridOrganism, DimBlockOrganism>>>(gpu_counters, gpu_fitness, gpu_prev_sequences, gpu_sequences, 
+        nb_indiv, grid_width, grid_height, size_seq);
+    checkCuda(cudaGetLastError());
+
+    do_mutation<<<DimGridOrganism, DimBlockOrganism>>>(gpu_counters, gpu_sequences, 
+        nb_indiv, grid_width, grid_height, seq_length, size_seq, mutation_rate);
+    checkCuda(cudaGetLastError());
+
+    apply_next_gen();
 }
 
 /**
  * Reallocate some data structures if needed
  * @param nb_indiv
  */
-void allocate_next_gen(int nb_indiv) {
-
+void apply_next_gen() {
+    uint32_t* temp = gpu_prev_sequences;
+    gpu_prev_sequences = gpu_sequences;
+    gpu_sequences = temp;
 }
 
 /**
@@ -235,7 +347,7 @@ PRNG usage:
         Threefry::Device rng(gpu_counters,indiv_id,Threefry::Phase::REPROD,nb_indiv);
         int found_org = rng.roulette_random(probs, NEIGHBORHOOD_SIZE);
  * For mutation:
-      Threefry::Device rng(gpu_counters,indiv_id,Threefry::Phase::MUTATION,nb_indivs);
+      Threefry::Device rng(gpu_counters,indiv_id,Threefry::Phase::MUTATION,nb_indiv);
       rng.binomial_random(prev_gen_size, mutation_r);
       rng.random( number );
  **/

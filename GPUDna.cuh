@@ -13,7 +13,8 @@ void dna_gpu_set(char** dna, int indiv_id, int pos, char c) {
 }
 
 __device__
-void dna_gpu_do_switch(char** dna, int indiv_id, int pos) {
-    if (dna[indiv_id][pos] == '0') dna[indiv_id][pos] = '1';
-    else dna[indiv_id][pos] = '0';
+void dna_gpu_do_switch(uint32_t* dna, int indiv_id, int size_seq, int pos) {
+    int frame = pos >> 5; // div by 32
+    int index_from_right = 31 - (pos - (frame << 5));
+    dna[indiv_id * size_seq + frame] ^= (1 << index_from_right);
 }
