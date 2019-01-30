@@ -1,5 +1,4 @@
 #include "Algorithms.h"
-#include "Algorithms.cuh"
 
 #include "ExpManager.h"
 #include "ThreefryGPU.h"
@@ -38,10 +37,12 @@ cudaError_t checkCuda(cudaError_t result)
 #define HALF_SCOPE_Y 1
 #define NEIGHBORHOOD_SIZE 9
 
-
-constexpr int32_t PROMOTER_ARRAY_SIZE = 10000;
+// PRNG
+unsigned long long* gpu_counters;
 uint32_t* gpu_sequences;
 uint32_t* gpu_prev_sequences;
+uint32_t* gpu_prom_at; // array of bool
+unsigned int* gpu_nb_prom;
 double* gpu_fitness;
 
 /**
@@ -63,6 +64,10 @@ double* gpu_fitness;
     
     checkCuda(cudaMalloc((void**) &gpu_sequences, sizeof(gpu_prev_sequences)));
     
+    checkCuda(cudaMalloc((void**) &gpu_prom_at, sizeof(gpu_prev_sequences)));
+    
+    checkCuda(cudaMalloc((void**) &gpu_nb_prom, sizeof(exp_m->nb_indivs_ * sizeof(unsigned int))));
+    
     checkCuda(cudaMalloc((void**) &gpu_fitness, exp_m->nb_indivs_ * sizeof(double)));
     
     // Mem cpy
@@ -76,7 +81,6 @@ double* gpu_fitness;
         checkCuda(cudaMemcpy(&gpu_fitness[i], &(exp_m->internal_organisms_[i]->fitness),
                             sizeof(double), 
                             cudaMemcpyHostToDevice));
-        //printf("%f - ", exp_m->internal_organisms_[i]->fitness);
     }
 
      // TO COMPLETE
@@ -90,6 +94,9 @@ double* gpu_fitness;
     checkCuda(cudaFree(gpu_counters));
     checkCuda(cudaFree(gpu_sequences));
     checkCuda(cudaFree(gpu_prev_sequences));
+    checkCuda(cudaFree(gpu_prom_at));
+    checkCuda(cudaFree(gpu_nb_prom));
+    checkCuda(cudaFree(gpu_fitness));
     // TO COMPLETE
 }
 
@@ -237,6 +244,23 @@ __device__ static int mod(int a, int b)
     return a;
 }
 
+__device__ static uint32_t seq_at(uint32_t* seq, int pos, int size){
+	assert(size <= 32); // sizeof(uint32_t)
+  	int frame = FRAME(pos);
+  	int nb_elem_in_first_frame = FRAME_SIZE - INDEXFL(pos, frame); // starts at 1 !!!
+  	// keep only the begining of the prom
+ 	int left_after = size - nb_elem_in_first_frame;
+ 	
+ 	uint32_t res;
+ 	if(left_after > 0){
+    	res = LEFT(LAST(seq[frame], nb_elem_in_first_frame), left_after); // mask and left shift
+    	res += FIRST(seq[++frame], left_after, FRAME_SIZE); // right shift
+  	} else {
+    	res = LAST(RIGHT(seq[frame], -left_after), size);
+  	}
+  	return res;
+}
+
 __global__ void selection(unsigned long long* gpu_counters, double* fitness, uint32_t* seqs, uint32_t* next,
     int nb_indiv, int grid_w, int grid_h, int size_seq){
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -306,6 +330,39 @@ __global__ void do_mutation(unsigned long long* gpu_counters, uint32_t* seqs,
     }
 }
 
+__global__ void find_promo(uint32_t* in_seqs, uint32_t* out_prom_at, unsigned int* out_nb_prom,
+	int nb_indiv, int grid_w, int grid_h, int seq_length, int size_seq){
+	
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int i = blockIdx.z * blockDim.z + threadIdx.z;
+    int stride = blockDim.z * gridDim.z;
+    int indiv_id = x * grid_h + y;
+    
+    /*
+    __shared__ unsigned int local_nb_prom[nb_indiv];
+    // initialize local
+    __syncthreads();
+    // ...
+    */
+    
+    if(x < grid_w && y < grid_h){
+	    while(i < seq_length){
+	    	int pos = indiv_id * size_seq + i;
+	    	if(!(seq_at(in_seqs, pos, PROM_SEQ_L) ^ PROM_SEQ)) {
+		        atomicAdd(&(out_nb_prom[indiv_id]), 1);
+		        //atomicAdd(&(local_nb_prom[indiv_id]), 1);
+		        i += stride;
+		        printf("found\r\n");
+	    	}
+	    }
+	    /*
+	    __syncthreads();
+	    // transfert local_nb_prom to out_prom_at
+	     */
+    }
+} 
+
 /**
  * Run a step on the GPU
  * @param nb_indiv
@@ -319,15 +376,22 @@ __global__ void do_mutation(unsigned long long* gpu_counters, uint32_t* seqs,
 void run_a_step_on_GPU(int nb_indiv, int size_seq, int seq_length, double w_max, double selection_pressure, int grid_width, int grid_height, double mutation_rate) {
     dim3 DimGridOrganism(ceil(grid_width/16.),ceil(grid_height/16.),1);
     dim3 DimBlockOrganism(16,16,1);
+    
+    dim3 DimGridBP(ceil(grid_width/8.),ceil(grid_height/8.),ceil(seq_length/8.));
+    dim3 DimBlockBP(8,8,8);
 
     selection<<<DimGridOrganism, DimBlockOrganism>>>(gpu_counters, gpu_fitness, gpu_prev_sequences, gpu_sequences, 
         nb_indiv, grid_width, grid_height, size_seq);
     checkCuda(cudaGetLastError());
-
+/*
     do_mutation<<<DimGridOrganism, DimBlockOrganism>>>(gpu_counters, gpu_sequences, 
         nb_indiv, grid_width, grid_height, seq_length, size_seq, mutation_rate);
     checkCuda(cudaGetLastError());
 
+    find_promo<<<DimGridBP, DimBlockBP>>>(gpu_sequences, gpu_prom_at, gpu_nb_prom,
+        nb_indiv, grid_width, grid_height, seq_length, size_seq);
+    checkCuda(cudaGetLastError());
+*/
     apply_next_gen();
 }
 

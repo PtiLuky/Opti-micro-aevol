@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Dna.h" //for macros and const
 
 __device__
 void dna_gpu_copy(char** dna, char** dna_next_gen, size_t dna_size, int indiv_id) {
