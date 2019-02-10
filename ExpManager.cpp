@@ -1248,18 +1248,14 @@ void ExpManager::selection(int indiv_id) {
     int neighborhood_size = 9;
 
     double *  local_fit_array   = new double[neighborhood_size];
-    double *  local_meta_array   = new double[neighborhood_size];
     double *  probs             = new double[neighborhood_size];
     int   count             = 0;
     double    sum_local_fit     = 0.0;
-
-    int * indiv_index = new int[neighborhood_size];
 
     int32_t x = indiv_id / grid_height_;
     int32_t y = indiv_id % grid_height_;
 
     int cur_x,cur_y;
-
     for (int8_t i = -1 ; i < selection_scope_x-1 ; i++) {
         for (int8_t j = -1; j < selection_scope_y - 1; j++) {
             cur_x = (x + i + grid_width_) % grid_width_;
@@ -1267,9 +1263,7 @@ void ExpManager::selection(int indiv_id) {
 
 
             local_fit_array[count] = prev_internal_organisms_[cur_x * grid_height_ + cur_y]->fitness;
-            local_meta_array[count] = prev_internal_organisms_[cur_x * grid_height_ + cur_y]->metaerror;
             sum_local_fit += local_fit_array[count];
-            indiv_index[count] = cur_x * grid_height_ + cur_y;
 
             count++;
         }
@@ -1285,9 +1279,7 @@ void ExpManager::selection(int indiv_id) {
     int x_offset = (found_org / selection_scope_x) - 1;
     int y_offset = (found_org % selection_scope_y) - 1;
 
-    delete [] indiv_index;
     delete [] local_fit_array;
-    delete [] local_meta_array;
     delete [] probs;
 
 
@@ -1334,10 +1326,11 @@ void ExpManager::run_evolution(int nb_gen) {
       high_resolution_clock::time_point t1 = high_resolution_clock::now();
       run_a_step(w_max_, selection_pressure_,firstGen);
       high_resolution_clock::time_point t2 = high_resolution_clock::now();
-      auto duration_gpu_start_stop_rna = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
+      auto duration_step = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
 
         firstGen = false;
         #ifndef NOLOG
+        std::cout<<"LOG,"<<duration_step<<std::endl;
         printf("Generation %d : Best individual fitness %e\n",AeTime::time(),best_indiv->fitness);
         #endif
 
